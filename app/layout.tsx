@@ -4,6 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Build",
   description: "Manufacturing operations platform",
+  icons: { icon: "/Build-Logo.ico" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
