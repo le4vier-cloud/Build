@@ -27,7 +27,7 @@ import {
   type FactoryZone,
 } from "@/types/factory";
 import {
-  MousePointer2, Square, Spline, Trash2, Maximize2,
+  MousePointer2, Square, Spline, Trash2, Maximize2, Minimize2,
   Building2, X, Plus, Save, RotateCcw,
 } from "lucide-react";
 
@@ -675,12 +675,29 @@ function ToolBtn({
    Main page
 ══════════════════════════════════════════════════ */
 export default function FactoryPage() {
-  const [toolMode,    setToolMode]    = useState<ToolMode>("select");
-  const [addZoneType, setAddZoneType] = useState<ZoneType | null>(null);
-  const [showDialog,  setShowDialog]  = useState(false);
-  const [mousePos,    setMousePos]    = useState({ x: 0, y: 0 });
+  const [toolMode,      setToolMode]      = useState<ToolMode>("select");
+  const [addZoneType,   setAddZoneType]   = useState<ZoneType | null>(null);
+  const [showDialog,    setShowDialog]    = useState(false);
+  const [mousePos,      setMousePos]      = useState({ x: 0, y: 0 });
+  const [isFullscreen,  setIsFullscreen]  = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const { zones, nodes, clearFloor } = useFactoryStore();
+
+  /* Sync fullscreen state with browser */
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen();
+    } else {
+      document.exitFullscreen();
+    }
+  };
 
   /* Keyboard shortcuts */
   useEffect(() => {
@@ -689,6 +706,7 @@ export default function FactoryPage() {
       if (e.key === "v" || e.key === "V" || e.key === "Escape") { setToolMode("select"); setAddZoneType(null); }
       if (e.key === "s" || e.key === "S") { setShowDialog(true); }
       if (e.key === "c" || e.key === "C") setToolMode("connect");
+      if (e.key === "f" || e.key === "F") toggleFullscreen();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -702,15 +720,18 @@ export default function FactoryPage() {
 
   return (
     /* Bleed out to edges, overriding the 24px layout padding */
-    <div style={{
-      margin: "-24px",
-      height: "calc(100vh - 52px)",
-      display: "flex",
-      flexDirection: "column",
-      backgroundColor: "#0F0F14",
-      overflow: "hidden",
-      userSelect: "none",
-    }}>
+    <div
+      ref={containerRef}
+      style={{
+        margin: isFullscreen ? 0 : "-24px",
+        height: isFullscreen ? "100vh" : "calc(100vh - 52px)",
+        display: "flex",
+        flexDirection: "column",
+        backgroundColor: "#0F0F14",
+        overflow: "hidden",
+        userSelect: "none",
+      }}
+    >
 
       {/* ── Top header bar ── */}
       <div style={{
@@ -770,6 +791,16 @@ export default function FactoryPage() {
         <button style={headerBtnGhost}>
           <Save size={13} /> Save Layout
         </button>
+        <button
+          onClick={toggleFullscreen}
+          title={isFullscreen ? "Exit Fullscreen (F)" : "Fullscreen (F)"}
+          style={headerBtnGhost}
+        >
+          {isFullscreen
+            ? <Minimize2 size={13} />
+            : <Maximize2 size={13} />
+          }
+        </button>
       </div>
 
       {/* ── Main area ── */}
@@ -815,7 +846,7 @@ export default function FactoryPage() {
         <StatusItem label="SNAP" value="ON" />
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 9, color: "#333348", fontFamily: "monospace" }}>
-          V — select · S — add zone · C — connect · ESC — cancel
+          V — select · S — add zone · C — connect · F — fullscreen · ESC — cancel
         </span>
       </div>
 
