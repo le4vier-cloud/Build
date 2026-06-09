@@ -4,14 +4,20 @@ import { Menu } from "lucide-react";
 
 interface HeaderProps {
   section?: string;
+  onMenuClick?: () => void;
+  menuActive?: boolean;
 }
 
-export function Header({ section = "Back-End" }: HeaderProps) {
+export function Header({ section = "Back-End", onMenuClick, menuActive }: HeaderProps) {
   return (
     <header style={styles.header}>
       <div style={styles.left}>
-        <button style={styles.menuBtn} aria-label="Toggle sidebar">
-          <Menu size={20} color="var(--text-secondary)" strokeWidth={1.8} />
+        <button style={styles.menuBtn} onClick={onMenuClick} aria-label="Toggle sidebar">
+          <Menu
+            size={20}
+            color={menuActive ? "var(--text-primary)" : "var(--text-secondary)"}
+            strokeWidth={1.8}
+          />
         </button>
         <span style={styles.sectionLabel}>{section}</span>
       </div>

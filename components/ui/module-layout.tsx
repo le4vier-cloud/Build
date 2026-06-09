@@ -1,4 +1,7 @@
+"use client";
+
 import React from "react";
+import { useSidebar } from "@/components/sidebar-context";
 
 interface SubNavItem {
   key: string;
@@ -9,12 +12,20 @@ interface SubNavItem {
 interface ModuleLayoutProps {
   title: string;
   subNav: SubNavItem[];
-  activeView: string;
+  activeView: string | null;
   onViewChange: (key: string) => void;
   children: React.ReactNode;
 }
 
 export function ModuleLayout({ title, subNav, activeView, onViewChange, children }: ModuleLayoutProps) {
+  const { setLocked, setHovered } = useSidebar();
+
+  function handleSubNavClick(key: string) {
+    onViewChange(key);
+    setLocked(false);
+    setHovered(false);
+  }
+
   return (
     <div style={s.page}>
       <h1 style={s.pageTitle}>{title}</h1>
@@ -23,7 +34,7 @@ export function ModuleLayout({ title, subNav, activeView, onViewChange, children
           {subNav.map((item) => (
             <button
               key={item.key}
-              onClick={() => onViewChange(item.key)}
+              onClick={() => handleSubNavClick(item.key)}
               style={{
                 ...s.subNavItem,
                 ...(activeView === item.key ? s.subNavItemActive : {}),

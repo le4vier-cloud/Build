@@ -12,7 +12,7 @@ const SUB_NAV = [
 ];
 
 export default function ProductsPage() {
-  const [view, setView] = useState("add");
+  const [view, setView] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", model: "", description: "" });
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 

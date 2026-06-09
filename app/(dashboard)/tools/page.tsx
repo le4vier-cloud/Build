@@ -10,7 +10,7 @@ const SUB_NAV = [
 ];
 
 export default function ToolsPage() {
-  const [view, setView] = useState("add");
+  const [view, setView] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", serial_number: "", station_ids: [] as string[] });
   const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
 

@@ -12,7 +12,7 @@ const SUB_NAV = [
 interface WorkflowRow { productLabel: string; workflowId: string; }
 
 export default function StationsPage() {
-  const [view, setView] = useState("add");
+  const [view, setView] = useState<string | null>(null);
   const [name, setName] = useState("Station 13");
   const [image, setImage] = useState<string | null>(null);
   const [workflows, setWorkflows] = useState<WorkflowRow[]>([

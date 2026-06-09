@@ -10,7 +10,7 @@ const SUB_NAV = [
 ];
 
 export default function PartsOSPage() {
-  const [view, setView] = useState("add");
+  const [view, setView] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: "", supplier_id: "", barcode: "", serial_number: "",
     qty_in_stock: "", min_threshold: "", cost_price: "", sale_price: "",

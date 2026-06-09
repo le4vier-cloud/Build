@@ -12,7 +12,7 @@ const SUB_NAV = [
 interface OsComponent { part_os_id: string; quantity: string; }
 
 export default function PartsIMPage() {
-  const [view, setView] = useState("add");
+  const [view, setView] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: "", serial_number: "", qty_in_stock: "", min_threshold: "",
     low_stock_alert: true, assembly_task_name: "Internal Manufacturing of",

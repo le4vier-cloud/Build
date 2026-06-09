@@ -21,7 +21,7 @@ const MOCK_ORDERS = [
 ];
 
 export default function OrdersPage() {
-  const [view, setView] = useState("list");
+  const [view, setView] = useState<string | null>(null);
   const [newClientMode, setNewClientMode] = useState(false);
   const [form, setForm] = useState({
     client_id: "", new_client_name: "", new_client_address: "",

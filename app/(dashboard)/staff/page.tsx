@@ -18,7 +18,7 @@ const MOCK_STAFF = [
 ];
 
 export default function StaffPage() {
-  const [view, setView] = useState("add");
+  const [view, setView] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     name: "",

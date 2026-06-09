@@ -11,7 +11,7 @@ const SUB_NAV = [
 ];
 
 export default function SuppliersPage() {
-  const [view, setView] = useState("add");
+  const [view, setView] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", address: "", emails: [] as string[], cell_numbers: [] as string[] });
   const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
 
