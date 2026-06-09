@@ -59,7 +59,7 @@ export function CostPanel() {
       <div style={s.scroll}>
 
         {/* ── Time ── */}
-        <Section icon={<Clock size={13} />} label="Production Time" color="#7B2FBE">
+        <Section icon={<Clock size={13} />} label="Production Time" color="#F56300">
           <Row label="Total time" value={fmt(bd.totalMinutes)} mono />
         </Section>
 
@@ -110,7 +110,7 @@ export function CostPanel() {
         </Section>
 
         {/* ── Bedryfskostes ── */}
-        <Section icon={<Zap size={13} />} label="Bedryfskostes" value={R(bd.bedryfskosCell)} color="#7C3AED">
+        <Section icon={<Zap size={13} />} label="Bedryfskostes" value={R(bd.bedryfskosCell)} color="#0891B2">
           <p style={s.hint}>Variable cost/hr × total production hours</p>
 
           {bedryfskosItems.map((b) => (
@@ -148,7 +148,7 @@ export function CostPanel() {
               { cost: bd.materialCost,  color: "#059669" },
               { cost: bd.machineCost,   color: "#D97706" },
               { cost: bd.vasteKosCost,  color: "#DC2626" },
-              { cost: bd.bedryfskosCell,color: "#7C3AED" },
+              { cost: bd.bedryfskosCell,color: "#0891B2" },
             ].filter((x) => x.cost > 0).map((x, i) => (
               <div key={i} style={{
                 ...s.barSegment,

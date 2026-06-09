@@ -77,7 +77,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: 24,
     height: 24,
     borderRadius: 6,
-    background: "linear-gradient(135deg, #7B2FBE 0%, #1D1D1F 100%)",
+    background: "linear-gradient(135deg, #F56300 0%, #1D1D1F 100%)",
   },
   companyName: {
     fontSize: 14,

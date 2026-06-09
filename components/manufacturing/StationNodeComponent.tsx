@@ -59,7 +59,7 @@ export const StationNodeComponent = ({ data }: StationNodeProps) => {
 
   return (
     <>
-      <Handle type="target" position={Position.Left} style={{ background: "#7B2FBE" }} />
+      <Handle type="target" position={Position.Left} style={{ background: "#F56300" }} />
 
       <div
         onClick={() => setSelectedNode(stationNode.id)}
@@ -95,7 +95,7 @@ export const StationNodeComponent = ({ data }: StationNodeProps) => {
 
         {/* Resource badges */}
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-          {taskCount > 0  && <Pill icon={<Clock size={9} />}   count={taskCount}  color="#7B2FBE" label="tasks" />}
+          {taskCount > 0  && <Pill icon={<Clock size={9} />}   count={taskCount}  color="#F56300" label="tasks" />}
           {staffCount > 0 && <Pill icon={<Users size={9} />}   count={staffCount} color="#2563EB" label="staff" />}
           {matCount > 0   && <Pill icon={<Package size={9} />} count={matCount}   color="#059669" label="parts" />}
           {toolCount > 0  && <Pill icon={<Wrench size={9} />}  count={toolCount}  color="#D97706" label="tools" />}
@@ -105,7 +105,7 @@ export const StationNodeComponent = ({ data }: StationNodeProps) => {
         </div>
       </div>
 
-      <Handle type="source" position={Position.Right} style={{ background: "#7B2FBE" }} />
+      <Handle type="source" position={Position.Right} style={{ background: "#F56300" }} />
     </>
   );
 };
