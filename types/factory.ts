@@ -3,7 +3,7 @@
 export type ZoneType =
   | "machining"
   | "assembly"
-  | "quality"
+  | "station"
   | "storage"
   | "logistics"
   | "office"
@@ -13,7 +13,7 @@ export type ZoneType =
 export const ZONE_COLORS: Record<ZoneType, { bg: string; border: string; text: string }> = {
   machining:     { bg: "#1C1408", border: "#D97706", text: "#F59E0B" },
   assembly:      { bg: "#080F1E", border: "#3B82F6", text: "#60A5FA" },
-  quality:       { bg: "#061410", border: "#10B981", text: "#34D399" },
+  station:       { bg: "#0A0814", border: "#6366F1", text: "#818CF8" },
   storage:       { bg: "#110B1E", border: "#8B5CF6", text: "#A78BFA" },
   logistics:     { bg: "#060F18", border: "#06B6D4", text: "#22D3EE" },
   office:        { bg: "#101014", border: "#6B7280", text: "#9CA3AF" },
@@ -24,7 +24,7 @@ export const ZONE_COLORS: Record<ZoneType, { bg: string; border: string; text: s
 export const ZONE_LABELS: Record<ZoneType, string> = {
   machining:     "Machining",
   assembly:      "Assembly",
-  quality:       "Quality Control",
+  station:       "Station",
   storage:       "Storage",
   logistics:     "Logistics",
   office:        "Office",
@@ -54,4 +54,42 @@ export interface FactoryFlowPath {
   targetId: string;
   pathType: "conveyor" | "walkway" | "agv" | "manual";
   label?: string;
+}
+
+/* ── Wall / Walkway segments ─────────────────────── */
+export type WallType = "wall" | "walkway";
+
+/** Developer-set thickness constraints and visual defaults */
+export const WALL_CONFIG: Record<WallType, {
+  minThickness:     number;  /* flow units — 1 unit ≈ 20 px grid */
+  maxThickness:     number;
+  defaultThickness: number;
+  defaultLength:    number;
+  label:            string;
+}> = {
+  wall: {
+    minThickness:     4,
+    maxThickness:     40,
+    defaultThickness: 12,
+    defaultLength:    120,
+    label:            "Wall",
+  },
+  walkway: {
+    minThickness:     20,
+    maxThickness:     200,
+    defaultThickness: 60,
+    defaultLength:    160,
+    label:            "Walkway",
+  },
+};
+
+export interface FactoryWall {
+  id:          string;
+  wallType:    WallType;
+  orientation: "horizontal" | "vertical";
+  position:    { x: number; y: number };
+  /** Length along the long axis (flow units) */
+  length:      number;
+  /** Thickness — clamped to WALL_CONFIG min/max (flow units) */
+  thickness:   number;
 }

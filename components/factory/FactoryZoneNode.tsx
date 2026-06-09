@@ -5,20 +5,20 @@ import type { NodeProps } from "@xyflow/react";
 import { useState } from "react";
 import { useFactoryStore } from "@/stores/useFactoryStore";
 import {
-  Cpu, Wrench, CheckCheck, Archive,
+  Cpu, Wrench, Cog, Archive,
   Truck, Briefcase, Package, Send,
 } from "lucide-react";
 import { ZONE_COLORS, ZONE_LABELS, ZoneType, FactoryZone } from "@/types/factory";
 
 const ICONS: Record<ZoneType, React.ReactNode> = {
-  machining:     <Cpu     size={10} strokeWidth={1.8} />,
-  assembly:      <Wrench  size={10} strokeWidth={1.8} />,
-  quality:       <CheckCheck size={10} strokeWidth={1.8} />,
-  storage:       <Archive size={10} strokeWidth={1.8} />,
-  logistics:     <Truck   size={10} strokeWidth={1.8} />,
+  machining:     <Cpu       size={10} strokeWidth={1.8} />,
+  assembly:      <Wrench    size={10} strokeWidth={1.8} />,
+  station:       <Cog       size={10} strokeWidth={1.8} />,
+  storage:       <Archive   size={10} strokeWidth={1.8} />,
+  logistics:     <Truck     size={10} strokeWidth={1.8} />,
   office:        <Briefcase size={10} strokeWidth={1.8} />,
-  raw_materials: <Package size={10} strokeWidth={1.8} />,
-  dispatch:      <Send    size={10} strokeWidth={1.8} />,
+  raw_materials: <Package   size={10} strokeWidth={1.8} />,
+  dispatch:      <Send      size={10} strokeWidth={1.8} />,
 };
 
 export function FactoryZoneNode({ id, data, selected }: NodeProps) {

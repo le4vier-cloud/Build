@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import {
-  FactoryZone, FactoryZoneNode, FactoryFlowPath, ZoneType,
+  FactoryZone, FactoryZoneNode, FactoryFlowPath,
+  FactoryWall,
 } from "@/types/factory";
 
 const MAX_HISTORY = 50;
@@ -9,29 +10,40 @@ interface HistorySnapshot {
   zones:  FactoryZone[];
   nodes:  FactoryZoneNode[];
   edges:  FactoryFlowPath[];
+  walls:  FactoryWall[];
 }
 
 interface FactoryStore {
   zones:    FactoryZone[];
   nodes:    FactoryZoneNode[];
   edges:    FactoryFlowPath[];
+  walls:    FactoryWall[];
   selectedNodeId: string | null;
 
   /* ── History ── */
   canUndo: boolean;
   undo:    () => void;
 
-  /* ── Actions ── */
-  addZone:             (zone: Omit<FactoryZone, "id">, position: { x: number; y: number }) => string;
+  /* ── Zone actions ── */
+  addZone:             (zone: Omit<FactoryZone, "id">, position: { x: number; y: number }, size?: { width: number; height: number }) => string;
   updateZone:          (id: string, updates: Partial<Omit<FactoryZone, "id">>) => void;
   removeZone:          (zoneId: string) => void;
   updateNodePosition:  (nodeId: string, pos: { x: number; y: number }) => void;
   updateNodeDimensions:(nodeId: string, dims: { width: number; height: number }) => void;
   resizeNode:          (nodeId: string, pos: { x: number; y: number }, dims: { width: number; height: number }) => void;
   setSelectedNode:     (nodeId: string | null) => void;
-  addFlowPath:         (path: Omit<FactoryFlowPath, "id">) => void;
-  removeFlowPath:      (pathId: string) => void;
-  clearFloor:          () => void;
+
+  /* ── Wall / Walkway actions ── */
+  addWall:    (wall: Omit<FactoryWall, "id">) => void;
+  updateWall: (id: string, updates: Partial<Omit<FactoryWall, "id">>) => void;
+  removeWall: (id: string) => void;
+  resizeWall: (id: string, pos: { x: number; y: number }, dims: { width: number; height: number }) => void;
+
+  /* ── Flow path actions ── */
+  addFlowPath:  (path: Omit<FactoryFlowPath, "id">) => void;
+  removeFlowPath:(pathId: string) => void;
+
+  clearFloor: () => void;
 
   /* Internal */
   _history: HistorySnapshot[];
@@ -41,8 +53,8 @@ export const useFactoryStore = create<FactoryStore>((set, get) => {
 
   /* ── Save a snapshot of current mutable data ── */
   const pushHistory = () => {
-    const { zones, nodes, edges } = get();
-    const snap: HistorySnapshot = { zones, nodes, edges };
+    const { zones, nodes, edges, walls } = get();
+    const snap: HistorySnapshot = { zones, nodes, edges, walls };
     set((s) => ({
       _history: [...s._history.slice(-(MAX_HISTORY - 1)), snap],
       canUndo: true,
@@ -53,6 +65,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => {
     zones: [],
     nodes: [],
     edges: [],
+    walls: [],
     selectedNodeId: null,
     _history: [],
     canUndo: false,
@@ -66,6 +79,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => {
           zones:          prev.zones,
           nodes:          prev.nodes,
           edges:          prev.edges,
+          walls:          prev.walls,
           selectedNodeId: null,
           _history:       s._history.slice(0, -1),
           canUndo:        s._history.length > 1,
@@ -73,14 +87,18 @@ export const useFactoryStore = create<FactoryStore>((set, get) => {
       });
     },
 
-    /* ── Mutations (each pushes history first) ───── */
-    addZone: (zone, position) => {
+    /* ── Zone mutations ───────────────────────────── */
+    addZone: (zone, position, size) => {
       pushHistory();
       const zoneId = `zone-${Date.now()}`;
       const nodeId = `fn-${Date.now()}`;
       set((s) => ({
         zones: [...s.zones, { ...zone, id: zoneId }],
-        nodes: [...s.nodes, { id: nodeId, zoneId, position, width: 180, height: 120 }],
+        nodes: [...s.nodes, {
+          id: nodeId, zoneId, position,
+          width:  size?.width  ?? 180,
+          height: size?.height ?? 120,
+        }],
         selectedNodeId: nodeId,
       }));
       return nodeId;
@@ -133,6 +151,50 @@ export const useFactoryStore = create<FactoryStore>((set, get) => {
 
     setSelectedNode: (nodeId) => set({ selectedNodeId: nodeId }),
 
+    /* ── Wall / Walkway mutations ─────────────────── */
+    addWall: (wall) => {
+      pushHistory();
+      const id = `wall-${Date.now()}`;
+      set((s) => ({
+        walls: [...s.walls, { ...wall, id }],
+        selectedNodeId: id,
+      }));
+    },
+
+    updateWall: (id, updates) => {
+      pushHistory();
+      set((s) => ({
+        walls: s.walls.map((w) => w.id === id ? { ...w, ...updates } : w),
+      }));
+    },
+
+    removeWall: (id) => {
+      pushHistory();
+      set((s) => ({
+        walls: s.walls.filter((w) => w.id !== id),
+        selectedNodeId: null,
+      }));
+    },
+
+    /* Atomic wall resize — recalculates length + thickness from new width/height
+       based on orientation so the semantics stay consistent. */
+    resizeWall: (id, pos, dims) => {
+      pushHistory();
+      set((s) => ({
+        walls: s.walls.map((w) => {
+          if (w.id !== id) return w;
+          const isH = w.orientation === "horizontal";
+          return {
+            ...w,
+            position:  pos,
+            length:    isH ? dims.width  : dims.height,
+            thickness: isH ? dims.height : dims.width,
+          };
+        }),
+      }));
+    },
+
+    /* ── Flow path mutations ──────────────────────── */
     addFlowPath: (path) => {
       pushHistory();
       set((s) => ({
@@ -149,7 +211,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => {
 
     clearFloor: () => {
       pushHistory();
-      set({ zones: [], nodes: [], edges: [], selectedNodeId: null });
+      set({ zones: [], nodes: [], edges: [], walls: [], selectedNodeId: null });
     },
   };
 });
