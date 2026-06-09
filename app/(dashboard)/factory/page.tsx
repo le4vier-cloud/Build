@@ -31,7 +31,7 @@ import {
 import {
   MousePointer2, Square, Spline, Maximize2, Minimize2,
   Building2, X, Plus, Save, RotateCcw, Undo2, Keyboard,
-  Minus, Navigation, Cog,
+  Minus, Footprints, Cog,
 } from "lucide-react";
 import { Cpu, Wrench, Archive, Truck, Briefcase, Package, Send } from "lucide-react";
 
@@ -548,7 +548,7 @@ function FactoryCanvasInner({
             }}>
               {isWall
                 ? <Minus size={12} color={accentColor} />
-                : <Navigation size={12} color={accentColor} />
+                : <Footprints size={12} color={accentColor} />
               }
               <span style={{ fontSize: 11, fontWeight: 700, color: accentColor }}>
                 {WALL_CONFIG[wall.wallType].label}
@@ -767,7 +767,7 @@ function PropertiesPanel({ t }: { t: Theme }) {
     return (
       <div style={panelStyle}>
         <div style={{ ...hdr, borderBottom: `1px solid ${acc}44`, backgroundColor: accBg }}>
-          {isWall ? <Minus size={13} color={acc} /> : <Navigation size={13} color={acc} />}
+          {isWall ? <Minus size={13} color={acc} /> : <Footprints size={13} color={acc} />}
           <span style={{ fontSize: 12, fontWeight: 700, color: acc, textTransform: "uppercase", letterSpacing: "0.08em" }}>{cfg.label}</span>
           <button onClick={() => setSelectedNode(null)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: 4, marginLeft: "auto" }}>
             <X size={13} color={acc + "88"} />
@@ -919,7 +919,7 @@ function Toolbar({
       <ToolBtn onClick={onAddZone} title="Add Zone (S)" active={toolMode === "add"} t={t}><Square size={17} strokeWidth={1.8} /></ToolBtn>
       <div style={{ width: 28, height: 1, backgroundColor: t.border, margin: "4px 0" }} />
       <ToolBtn active={toolMode === "wall"}    onClick={() => setToolMode("wall")}    title="Wall (W)"    t={t}><Minus size={17} strokeWidth={2.5} /></ToolBtn>
-      <ToolBtn active={toolMode === "walkway"} onClick={() => setToolMode("walkway")} title="Walkway (K)" t={t}><Navigation size={15} strokeWidth={1.8} /></ToolBtn>
+      <ToolBtn active={toolMode === "walkway"} onClick={() => setToolMode("walkway")} title="Walkway (K)" t={t}><Footprints size={15} strokeWidth={1.8} /></ToolBtn>
       {isWallMode && (
         <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 2 }}>
           {(["horizontal", "vertical"] as const).map((o) => (
@@ -1100,7 +1100,7 @@ export default function FactoryPage() {
         {/* Wall/walkway placement banner */}
         {isWallMode && (
           <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", backgroundColor: toolMode === "wall" ? "rgba(104,104,104,0.1)" : "rgba(58,120,176,0.1)", border: `1px solid ${toolMode === "wall" ? "rgba(104,104,104,0.4)" : "rgba(58,120,176,0.4)"}`, borderRadius: 999, fontSize: 11, color: toolMode === "wall" ? "#888" : "#4A90C8", fontWeight: 600 }}>
-            {toolMode === "wall" ? <Minus size={10} /> : <Navigation size={10} />}
+            {toolMode === "wall" ? <Minus size={10} /> : <Footprints size={10} />}
             Placing {toolMode === "wall" ? "Wall" : "Walkway"} —
             <button onClick={() => setWallOrientation((o) => o === "horizontal" ? "vertical" : "horizontal")} style={{ background: "none", border: "none", cursor: "pointer", color: toolMode === "wall" ? "#888" : "#4A90C8", fontSize: 10, fontFamily: "monospace", fontWeight: 800, padding: "0 2px" }}>
               {wallOrientation === "horizontal" ? "↔ H" : "↕ V"}
