@@ -239,6 +239,8 @@ function FactoryCanvasInner({
         snapGrid={[20, 20]}
         snapToGrid
         fitView
+        minZoom={0}
+        maxZoom={4}
         proOptions={{ hideAttribution: true }}
         style={{ backgroundColor: t.canvasBg }}
         defaultEdgeOptions={{
