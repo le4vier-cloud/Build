@@ -3,11 +3,23 @@ import {
   FactoryZone, FactoryZoneNode, FactoryFlowPath, ZoneType,
 } from "@/types/factory";
 
+const MAX_HISTORY = 50;
+
+interface HistorySnapshot {
+  zones:  FactoryZone[];
+  nodes:  FactoryZoneNode[];
+  edges:  FactoryFlowPath[];
+}
+
 interface FactoryStore {
   zones:    FactoryZone[];
   nodes:    FactoryZoneNode[];
   edges:    FactoryFlowPath[];
   selectedNodeId: string | null;
+
+  /* ── History ── */
+  canUndo: boolean;
+  undo:    () => void;
 
   /* ── Actions ── */
   addZone:             (zone: Omit<FactoryZone, "id">, position: { x: number; y: number }) => string;
@@ -19,65 +31,113 @@ interface FactoryStore {
   addFlowPath:         (path: Omit<FactoryFlowPath, "id">) => void;
   removeFlowPath:      (pathId: string) => void;
   clearFloor:          () => void;
+
+  /* Internal */
+  _history: HistorySnapshot[];
 }
 
-export const useFactoryStore = create<FactoryStore>((set) => ({
-  zones: [],
-  nodes: [],
-  edges: [],
-  selectedNodeId: null,
+export const useFactoryStore = create<FactoryStore>((set, get) => {
 
-  addZone: (zone, position) => {
-    const zoneId  = `zone-${Date.now()}`;
-    const nodeId  = `fn-${Date.now()}`;
-    set((state) => ({
-      zones: [...state.zones, { ...zone, id: zoneId }],
-      nodes: [...state.nodes, {
-        id: nodeId, zoneId,
-        position, width: 180, height: 120,
-      }],
-      selectedNodeId: nodeId,
+  /* ── Save a snapshot of current mutable data ── */
+  const pushHistory = () => {
+    const { zones, nodes, edges } = get();
+    const snap: HistorySnapshot = { zones, nodes, edges };
+    set((s) => ({
+      _history: [...s._history.slice(-(MAX_HISTORY - 1)), snap],
+      canUndo: true,
     }));
-    return nodeId;
-  },
+  };
 
-  updateZone: (id, updates) =>
-    set((state) => ({
-      zones: state.zones.map((z) => z.id === id ? { ...z, ...updates } : z),
-    })),
+  return {
+    zones: [],
+    nodes: [],
+    edges: [],
+    selectedNodeId: null,
+    _history: [],
+    canUndo: false,
 
-  removeZone: (zoneId) =>
-    set((state) => ({
-      zones: state.zones.filter((z) => z.id !== zoneId),
-      nodes: state.nodes.filter((n) => n.zoneId !== zoneId),
-      edges: state.edges.filter((e) => {
-        const nodeIds = state.nodes.filter((n) => n.zoneId === zoneId).map((n) => n.id);
-        return !nodeIds.includes(e.sourceId) && !nodeIds.includes(e.targetId);
-      }),
-      selectedNodeId: null,
-    })),
+    /* ── Undo ─────────────────────────────────────── */
+    undo: () => {
+      set((s) => {
+        if (s._history.length === 0) return s;
+        const prev = s._history[s._history.length - 1];
+        return {
+          zones:          prev.zones,
+          nodes:          prev.nodes,
+          edges:          prev.edges,
+          selectedNodeId: null,
+          _history:       s._history.slice(0, -1),
+          canUndo:        s._history.length > 1,
+        };
+      });
+    },
 
-  updateNodePosition: (nodeId, pos) =>
-    set((state) => ({
-      nodes: state.nodes.map((n) => n.id === nodeId ? { ...n, position: pos } : n),
-    })),
+    /* ── Mutations (each pushes history first) ───── */
+    addZone: (zone, position) => {
+      pushHistory();
+      const zoneId = `zone-${Date.now()}`;
+      const nodeId = `fn-${Date.now()}`;
+      set((s) => ({
+        zones: [...s.zones, { ...zone, id: zoneId }],
+        nodes: [...s.nodes, { id: nodeId, zoneId, position, width: 180, height: 120 }],
+        selectedNodeId: nodeId,
+      }));
+      return nodeId;
+    },
 
-  updateNodeDimensions: (nodeId, dims) =>
-    set((state) => ({
-      nodes: state.nodes.map((n) => n.id === nodeId ? { ...n, ...dims } : n),
-    })),
+    updateZone: (id, updates) => {
+      pushHistory();
+      set((s) => ({
+        zones: s.zones.map((z) => z.id === id ? { ...z, ...updates } : z),
+      }));
+    },
 
-  setSelectedNode: (nodeId) => set({ selectedNodeId: nodeId }),
+    removeZone: (zoneId) => {
+      pushHistory();
+      set((s) => ({
+        zones: s.zones.filter((z) => z.id !== zoneId),
+        nodes: s.nodes.filter((n) => n.zoneId !== zoneId),
+        edges: s.edges.filter((e) => {
+          const removedIds = s.nodes.filter((n) => n.zoneId === zoneId).map((n) => n.id);
+          return !removedIds.includes(e.sourceId) && !removedIds.includes(e.targetId);
+        }),
+        selectedNodeId: null,
+      }));
+    },
 
-  addFlowPath: (path) =>
-    set((state) => ({
-      edges: [...state.edges, { ...path, id: `fp-${Date.now()}` }],
-    })),
+    updateNodePosition: (nodeId, pos) => {
+      pushHistory();
+      set((s) => ({
+        nodes: s.nodes.map((n) => n.id === nodeId ? { ...n, position: pos } : n),
+      }));
+    },
 
-  removeFlowPath: (pathId) =>
-    set((state) => ({
-      edges: state.edges.filter((e) => e.id !== pathId),
-    })),
+    updateNodeDimensions: (nodeId, dims) => {
+      pushHistory();
+      set((s) => ({
+        nodes: s.nodes.map((n) => n.id === nodeId ? { ...n, ...dims } : n),
+      }));
+    },
 
-  clearFloor: () => set({ zones: [], nodes: [], edges: [], selectedNodeId: null }),
-}));
+    setSelectedNode: (nodeId) => set({ selectedNodeId: nodeId }),
+
+    addFlowPath: (path) => {
+      pushHistory();
+      set((s) => ({
+        edges: [...s.edges, { ...path, id: `fp-${Date.now()}` }],
+      }));
+    },
+
+    removeFlowPath: (pathId) => {
+      pushHistory();
+      set((s) => ({
+        edges: s.edges.filter((e) => e.id !== pathId),
+      }));
+    },
+
+    clearFloor: () => {
+      pushHistory();
+      set({ zones: [], nodes: [], edges: [], selectedNodeId: null });
+    },
+  };
+});

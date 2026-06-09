@@ -27,7 +27,7 @@ import {
 } from "@/types/factory";
 import {
   MousePointer2, Square, Spline, Maximize2, Minimize2,
-  Building2, X, Plus, Save, RotateCcw,
+  Building2, X, Plus, Save, RotateCcw, Undo2,
 } from "lucide-react";
 import { Cpu, Wrench, CheckCheck, Archive, Truck, Briefcase, Package, Send } from "lucide-react";
 
@@ -597,12 +597,14 @@ function Stat({ label, value, t }: { label: string; value: string; t: Theme }) {
    Toolbar
 ══════════════════════════════════════════════════ */
 function Toolbar({
-  toolMode, setToolMode, onAddZone, onClearFloor, t,
+  toolMode, setToolMode, onAddZone, onClearFloor, onUndo, canUndo, t,
 }: {
   toolMode: ToolMode;
   setToolMode: (m: ToolMode) => void;
   onAddZone: () => void;
   onClearFloor: () => void;
+  onUndo: () => void;
+  canUndo: boolean;
   t: Theme;
 }) {
   const tools = [
@@ -633,6 +635,17 @@ function Toolbar({
         <Square size={17} strokeWidth={1.8} />
       </ToolBtn>
 
+      <div style={{ width: 28, height: 1, backgroundColor: t.border, margin: "4px 0" }} />
+
+      <ToolBtn
+        onClick={onUndo}
+        title="Undo (⌘Z)"
+        disabled={!canUndo}
+        t={t}
+      >
+        <Undo2 size={15} strokeWidth={1.8} />
+      </ToolBtn>
+
       <div style={{ width: 28, height: 1, backgroundColor: t.border, margin: "4px 0", marginTop: "auto" }} />
 
       <ToolBtn onClick={onClearFloor} title="Clear Floor" style={{ marginBottom: 8 }} t={t}>
@@ -643,10 +656,11 @@ function Toolbar({
 }
 
 function ToolBtn({
-  children, active = false, onClick, title, style: extStyle, t,
+  children, active = false, disabled = false, onClick, title, style: extStyle, t,
 }: {
   children: React.ReactNode;
   active?: boolean;
+  disabled?: boolean;
   onClick?: () => void;
   title?: string;
   style?: React.CSSProperties;
@@ -654,7 +668,7 @@ function ToolBtn({
 }) {
   return (
     <button
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
       title={title}
       style={{
         width: 36, height: 36,
@@ -662,19 +676,20 @@ function ToolBtn({
         backgroundColor: active ? "#F56300" : "transparent",
         border: `1px solid ${active ? "#F56300" : "transparent"}`,
         borderRadius: 8,
-        color: active ? "#fff" : t.textMuted,
-        cursor: "pointer",
-        transition: "background-color 0.15s, color 0.15s",
+        color: disabled ? t.textDim : active ? "#fff" : t.textMuted,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.4 : 1,
+        transition: "background-color 0.15s, color 0.15s, opacity 0.15s",
         ...extStyle,
       }}
       onMouseEnter={(e) => {
-        if (!active) {
+        if (!active && !disabled) {
           (e.currentTarget as HTMLButtonElement).style.backgroundColor = t.toolHover;
           (e.currentTarget as HTMLButtonElement).style.color = t.textPrimary;
         }
       }}
       onMouseLeave={(e) => {
-        if (!active) {
+        if (!active && !disabled) {
           (e.currentTarget as HTMLButtonElement).style.backgroundColor = "transparent";
           (e.currentTarget as HTMLButtonElement).style.color = t.textMuted;
         }
@@ -699,7 +714,7 @@ export default function FactoryPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const { zones, nodes, clearFloor } = useFactoryStore();
+  const { zones, nodes, clearFloor, undo, canUndo } = useFactoryStore();
 
   /* Fullscreen sync */
   useEffect(() => {
@@ -717,6 +732,7 @@ export default function FactoryPage() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if ((e.metaKey || e.ctrlKey) && e.key === "z") { e.preventDefault(); undo(); return; }
       if (e.key === "v" || e.key === "V" || e.key === "Escape") { setToolMode("select"); setAddZoneType(null); }
       if (e.key === "s" || e.key === "S") setShowDialog(true);
       if (e.key === "c" || e.key === "C") setToolMode("connect");
@@ -826,6 +842,8 @@ export default function FactoryPage() {
           setToolMode={setToolMode}
           onAddZone={() => setShowDialog(true)}
           onClearFloor={clearFloor}
+          onUndo={undo}
+          canUndo={canUndo}
           t={t}
         />
 
