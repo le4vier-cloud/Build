@@ -1,138 +1,124 @@
-import { Handle, Position } from '@xyflow/react';
-import { StationNode } from '@/types/manufacturing';
-import { useManufacturingStore } from '@/stores/useManufacturingStore';
-import { Clock, Zap } from 'lucide-react';
-import { motion } from 'framer-motion';
+"use client";
+
+import { Handle, Position } from "@xyflow/react";
+import { StationNode, NodeStaff, NodeMaterial, NodeTool } from "@/types/manufacturing";
+import { useManufacturingStore } from "@/stores/useManufacturingStore";
+import { Clock, Zap, Users, Package, Wrench } from "lucide-react";
 
 interface StationNodeProps {
-  data: {
-    stationNode: StationNode;
-  };
+  data: { stationNode: StationNode };
 }
 
 export const StationNodeComponent = ({ data }: StationNodeProps) => {
   const { stationNode } = data;
-  const { 
-    stations, 
-    tasks, 
-    workflows, 
-    setSelectedNode, 
-    currentProcess,
-    getStageGroups,
-    assignTaskToStation,
-    assignWorkflowToStation,
+  const {
+    stations, setSelectedNode, currentProcess,
+    getStageGroups, getNodeDuration,
+    assignTaskToStation, assignWorkflowToStation,
+    assignStaffToStation, assignMaterialToStation, assignToolToStation,
   } = useManufacturingStore();
 
-  const station = stations.find(s => s.id === stationNode.stationId);
+  const station = stations.find((s) => s.id === stationNode.stationId);
   if (!station) return null;
+
+  const duration = getNodeDuration(stationNode);
+  const isCritical = currentProcess?.criticalPath.includes(station.id);
+  const stageGroups = getStageGroups();
+  const currentStage = stageGroups.find((g) => g.stations.some((s) => s.id === stationNode.id));
+  const lagTime = currentStage ? currentStage.maxDuration - duration : 0;
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const type = e.dataTransfer.getData('type');
-    const id = e.dataTransfer.getData('id');
-
-    if (type === 'task') {
-      assignTaskToStation(stationNode.id, id);
-    } else if (type === 'workflow') {
-      assignWorkflowToStation(stationNode.id, id);
+    const resourceType = e.dataTransfer.getData("resourceType");
+    const payloadRaw = e.dataTransfer.getData("resourcePayload");
+    if (resourceType && payloadRaw) {
+      try {
+        const payload = JSON.parse(payloadRaw);
+        if (resourceType === "task")     assignTaskToStation(stationNode.id, payload.id);
+        if (resourceType === "workflow") assignWorkflowToStation(stationNode.id, payload.id);
+        if (resourceType === "staff")    assignStaffToStation(stationNode.id, payload as NodeStaff);
+        if (resourceType === "material") assignMaterialToStation(stationNode.id, { ...payload, qty: payload.qty ?? 1 } as NodeMaterial);
+        if (resourceType === "tool")     assignToolToStation(stationNode.id, payload as NodeTool);
+        return;
+      } catch { /* fallthrough */ }
     }
+    // Legacy
+    const type = e.dataTransfer.getData("type");
+    const id   = e.dataTransfer.getData("id");
+    if (type === "task")     assignTaskToStation(stationNode.id, id);
+    if (type === "workflow") assignWorkflowToStation(stationNode.id, id);
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); };
 
-  // Calculate station duration
-  let duration = 0;
-  stationNode.assignedTasks.forEach(taskId => {
-    const task = tasks.find(t => t.id === taskId);
-    if (task) duration += task.duration;
-  });
-
-  stationNode.assignedWorkflows.forEach(workflowId => {
-    const workflow = workflows.find(w => w.id === workflowId);
-    if (workflow) {
-      workflow.taskIds.forEach(taskId => {
-        const task = tasks.find(t => t.id === taskId);
-        if (task) duration += task.duration;
-      });
-    }
-  });
-
-  // Check if on critical path
-  const isCritical = currentProcess?.criticalPath.includes(station.id);
-  
-  // Calculate lag time and optimization suggestion
-  const stageGroups = getStageGroups();
-  const currentStage = stageGroups.find(g => 
-    g.stations.some(s => s.id === stationNode.id)
-  );
-  const lagTime = currentStage ? currentStage.maxDuration - duration : 0;
-  
-  // Calculate optimal time (average of all stations in stage)
-  const optimalTime = currentStage 
-    ? currentStage.maxDuration 
-    : duration;
+  const taskCount  = stationNode.assignedTasks.length + stationNode.assignedWorkflows.length;
+  const staffCount = stationNode.assignedStaff?.length ?? 0;
+  const matCount   = stationNode.assignedMaterials?.length ?? 0;
+  const toolCount  = stationNode.assignedTools?.length ?? 0;
 
   return (
     <>
-      <Handle type="target" position={Position.Left} className="!bg-primary" />
-      
-      <motion.div
-        whileHover={{ scale: 1.02 }}
+      <Handle type="target" position={Position.Left} style={{ background: "#7B2FBE" }} />
+
+      <div
         onClick={() => setSelectedNode(stationNode.id)}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
-        className={`
-          min-w-[200px] px-4 py-3 rounded-lg border-2 cursor-pointer
-          transition-all duration-300
-          ${isCritical 
-            ? 'bg-critical/10 border-critical shadow-[0_0_20px_hsl(var(--critical)/0.3)]' 
-            : 'bg-node border-border hover:bg-node-hover hover:border-primary/50'
-          }
-        `}
+        style={{
+          minWidth: 180,
+          padding: "10px 14px",
+          borderRadius: 10,
+          border: `2px solid ${isCritical ? "#EF4444" : "#E5E5EA"}`,
+          backgroundColor: isCritical ? "rgba(239,68,68,0.04)" : "#FFFFFF",
+          cursor: "pointer",
+          boxShadow: isCritical ? "0 0 16px rgba(239,68,68,0.2)" : "0 1px 6px rgba(0,0,0,0.06)",
+          transition: "box-shadow 0.2s ease",
+        }}
       >
-        <div className="flex items-start justify-between gap-2 mb-2">
-          <h3 className="font-semibold text-foreground">{station.name}</h3>
-          {isCritical && (
-            <Zap className="w-4 h-4 text-critical" fill="currentColor" />
+        {/* Title */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "#1D1D1F" }}>{station.name}</span>
+          {isCritical && <Zap size={13} color="#EF4444" fill="#EF4444" />}
+        </div>
+
+        {/* Time */}
+        <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 8, color: "#8E8E93" }}>
+          <Clock size={11} strokeWidth={1.8} />
+          <span style={{ fontSize: 11 }}>{duration} min</span>
+          {lagTime > 0 && (
+            <span style={{ fontSize: 10, backgroundColor: "#FEF3C7", color: "#D97706", borderRadius: 4, padding: "1px 5px", marginLeft: 4 }}>
+              wait {lagTime}m
+            </span>
           )}
         </div>
-        
-        <div className="flex items-center gap-1 text-sm text-muted-foreground mb-1">
-          <Clock className="w-3 h-3" />
-          <span>{duration} min</span>
+
+        {/* Resource badges */}
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+          {taskCount > 0  && <Pill icon={<Clock size={9} />}   count={taskCount}  color="#7B2FBE" label="tasks" />}
+          {staffCount > 0 && <Pill icon={<Users size={9} />}   count={staffCount} color="#2563EB" label="staff" />}
+          {matCount > 0   && <Pill icon={<Package size={9} />} count={matCount}   color="#059669" label="parts" />}
+          {toolCount > 0  && <Pill icon={<Wrench size={9} />}  count={toolCount}  color="#D97706" label="tools" />}
+          {taskCount === 0 && staffCount === 0 && matCount === 0 && toolCount === 0 && (
+            <span style={{ fontSize: 10, color: "#AEAEB2" }}>Drop resources here</span>
+          )}
         </div>
+      </div>
 
-        {lagTime > 0 && (
-          <div className="mt-2 px-2 py-1 rounded bg-warning/10 border border-warning/30">
-            <div className="text-xs font-medium text-warning">
-              Wait: {lagTime} min
-            </div>
-          </div>
-        )}
-
-        {duration > 0 && duration !== optimalTime && (
-          <div className="mt-2 px-2 py-1 rounded bg-accent/10 border border-accent/30">
-            <div className="text-xs font-medium text-accent">
-              {duration < optimalTime 
-                ? `Add ${optimalTime - duration} min to sync`
-                : `Reduce ${duration - optimalTime} min to sync`
-              }
-            </div>
-          </div>
-        )}
-
-        <div className="mt-2 pt-2 border-t border-border">
-          <div className="text-xs text-muted-foreground">
-            {stationNode.assignedTasks.length + stationNode.assignedWorkflows.length} assigned
-          </div>
-        </div>
-      </motion.div>
-
-      <Handle type="source" position={Position.Right} className="!bg-primary" />
+      <Handle type="source" position={Position.Right} style={{ background: "#7B2FBE" }} />
     </>
   );
 };
+
+function Pill({ icon, count, color, label }: { icon: React.ReactNode; count: number; color: string; label: string }) {
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 3,
+      padding: "2px 6px", borderRadius: 4,
+      backgroundColor: color + "18", color,
+      fontSize: 10, fontWeight: 600,
+    }}>
+      {icon} {count} {label}
+    </div>
+  );
+}
