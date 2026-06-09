@@ -14,6 +14,7 @@ import {
   Edge,
   BackgroundVariant,
   Panel,
+  type NodeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useManufacturingStore } from "@/stores/useManufacturingStore";
@@ -28,7 +29,7 @@ const nodeTypes = {
 export const FlowCanvas = () => {
   const {
     stationNodes, stations, currentProcess,
-    updateStationPosition, calculateTiming, getNodeDuration,
+    updateStationPosition, removeStationNode, calculateTiming, getNodeDuration,
   } = useManufacturingStore();
 
   const [startPos, setStartPos] = useState({ x: 60, y: 220 });
@@ -75,6 +76,25 @@ export const FlowCanvas = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stationNodes]);
 
+  /* Intercept RF's built-in delete (Del key) and sync removal to the store.
+     Without this, RF removes the node from its local state but the Zustand store
+     still contains it — so the next setNodes(buildNodes()) call brings it back. */
+  const handleNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      changes.forEach((change) => {
+        if (
+          change.type === "remove" &&
+          change.id !== "start" &&
+          change.id !== "end"
+        ) {
+          removeStationNode(change.id);
+        }
+      });
+      onNodesChange(changes);
+    },
+    [onNodesChange, removeStationNode]
+  );
+
   const onConnect = useCallback(
     (connection: Connection) => {
       setEdges((eds) =>
@@ -120,7 +140,7 @@ export const FlowCanvas = () => {
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={onNodesChange}
+        onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onNodeDragStop={onNodeDragStop}

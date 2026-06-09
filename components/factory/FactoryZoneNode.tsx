@@ -23,7 +23,7 @@ const ICONS: Record<ZoneType, React.ReactNode> = {
 
 export function FactoryZoneNode({ id, data, selected }: NodeProps) {
   const zone = data.zone as FactoryZone;
-  const { updateNodeDimensions } = useFactoryStore();
+  const { resizeNode } = useFactoryStore();
   const [hovered, setHovered] = useState(false);
   const colors = ZONE_COLORS[zone.type];
   const label  = ZONE_LABELS[zone.type];
@@ -54,7 +54,13 @@ export function FactoryZoneNode({ id, data, selected }: NodeProps) {
           borderRadius: 2,
         }}
         onResizeEnd={(_e, params) => {
-          updateNodeDimensions(id, { width: params.width, height: params.height });
+          /* params carries the updated x/y when a left or top handle is dragged —
+             we must save position alongside dimensions or the node jumps back. */
+          resizeNode(
+            id,
+            { x: params.x, y: params.y },
+            { width: params.width, height: params.height },
+          );
         }}
       />
 

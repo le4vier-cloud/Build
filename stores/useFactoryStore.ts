@@ -27,6 +27,7 @@ interface FactoryStore {
   removeZone:          (zoneId: string) => void;
   updateNodePosition:  (nodeId: string, pos: { x: number; y: number }) => void;
   updateNodeDimensions:(nodeId: string, dims: { width: number; height: number }) => void;
+  resizeNode:          (nodeId: string, pos: { x: number; y: number }, dims: { width: number; height: number }) => void;
   setSelectedNode:     (nodeId: string | null) => void;
   addFlowPath:         (path: Omit<FactoryFlowPath, "id">) => void;
   removeFlowPath:      (pathId: string) => void;
@@ -116,6 +117,17 @@ export const useFactoryStore = create<FactoryStore>((set, get) => {
       pushHistory();
       set((s) => ({
         nodes: s.nodes.map((n) => n.id === nodeId ? { ...n, ...dims } : n),
+      }));
+    },
+
+    /* Atomic resize: updates position + dimensions in one set() call so the
+       canvas doesn't flicker when pulling a left or top handle. */
+    resizeNode: (nodeId, pos, dims) => {
+      pushHistory();
+      set((s) => ({
+        nodes: s.nodes.map((n) =>
+          n.id === nodeId ? { ...n, position: pos, ...dims } : n
+        ),
       }));
     },
 
