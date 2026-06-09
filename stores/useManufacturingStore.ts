@@ -78,6 +78,15 @@ interface ManufacturingStore {
   assignToolToStation: (nodeId: string, tool: NodeTool) => void;
   removeToolFromStation: (nodeId: string, toolId: string) => void;
 
+  /* ── Actions: task / workflow CRUD ───────────── */
+  addTask: (task: Omit<Task, 'id'>) => void;
+  removeTask: (taskId: string) => void;
+  updateTask: (taskId: string, updates: Partial<Omit<Task, 'id'>>) => void;
+  addWorkflow: (workflow: Omit<Workflow, 'id'>) => void;
+  removeWorkflow: (workflowId: string) => void;
+  addTaskToWorkflow: (workflowId: string, taskId: string) => void;
+  removeTaskFromWorkflow: (workflowId: string, taskId: string) => void;
+
   /* ── Actions: overhead cost lines ────────────── */
   addVasteKosItem: (item: Omit<VasteKosItem, 'id'>) => void;
   removeVasteKosItem: (id: string) => void;
@@ -265,6 +274,54 @@ export const useManufacturingStore = create<ManufacturingStore>((set, get) => ({
         n.id === nodeId
           ? { ...n, assignedTools: n.assignedTools.filter((t) => t.toolId !== toolId) }
           : n
+      ),
+    })),
+
+  /* ── Task / workflow CRUD ─────────────────────── */
+  addTask: (task) =>
+    set((state) => ({
+      tasks: [...state.tasks, { ...task, id: `t-${Date.now()}` }],
+    })),
+
+  removeTask: (taskId) =>
+    set((state) => ({
+      tasks: state.tasks.filter((t) => t.id !== taskId),
+      workflows: state.workflows.map((w) => ({ ...w, taskIds: w.taskIds.filter((id) => id !== taskId) })),
+      stationNodes: state.stationNodes.map((n) => ({ ...n, assignedTasks: n.assignedTasks.filter((id) => id !== taskId) })),
+    })),
+
+  updateTask: (taskId, updates) =>
+    set((state) => ({
+      tasks: state.tasks.map((t) => t.id === taskId ? { ...t, ...updates } : t),
+    })),
+
+  addWorkflow: (workflow) =>
+    set((state) => ({
+      workflows: [...state.workflows, { ...workflow, id: `w-${Date.now()}` }],
+    })),
+
+  removeWorkflow: (workflowId) =>
+    set((state) => ({
+      workflows: state.workflows.filter((w) => w.id !== workflowId),
+      stationNodes: state.stationNodes.map((n) => ({
+        ...n,
+        assignedWorkflows: n.assignedWorkflows.filter((id) => id !== workflowId),
+      })),
+    })),
+
+  addTaskToWorkflow: (workflowId, taskId) =>
+    set((state) => ({
+      workflows: state.workflows.map((w) =>
+        w.id === workflowId && !w.taskIds.includes(taskId)
+          ? { ...w, taskIds: [...w.taskIds, taskId] }
+          : w
+      ),
+    })),
+
+  removeTaskFromWorkflow: (workflowId, taskId) =>
+    set((state) => ({
+      workflows: state.workflows.map((w) =>
+        w.id === workflowId ? { ...w, taskIds: w.taskIds.filter((id) => id !== taskId) } : w
       ),
     })),
 
