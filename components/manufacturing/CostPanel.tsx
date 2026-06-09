@@ -16,36 +16,36 @@ const fmt = (min: number) => {
 export function CostPanel() {
   const {
     getCostBreakdown,
-    vasteKosItems, bedryfskosItems,
-    addVasteKosItem, removeVasteKosItem,
-    addBedryfskosItem, removeBedryfskosItem,
+    fixedCostItems, operatingCostItems,
+    addFixedCostItem, removeFixedCostItem,
+    addOperatingCostItem, removeOperatingCostItem,
   } = useManufacturingStore();
 
   const bd = getCostBreakdown();
 
-  /* ── Vaste Kostes form ── */
-  const [vLabel, setVLabel] = useState("");
-  const [vMonthly, setVMonthly] = useState("");
-  const [vUnits, setVUnits] = useState("");
+  /* ── Fixed Costs form ── */
+  const [fLabel, setVLabel] = useState("");
+  const [fMonthly, setVMonthly] = useState("");
+  const [fUnits, setVUnits] = useState("");
 
-  /* ── Bedryfskostes form ── */
-  const [bLabel, setBLabel] = useState("");
-  const [bPerHour, setBPerHour] = useState("");
+  /* ── Operating Costs form ── */
+  const [oLabel, setBLabel] = useState("");
+  const [oPerHour, setBPerHour] = useState("");
 
-  function submitVaste(e: React.FormEvent) {
+  function submitFixed(e: React.FormEvent) {
     e.preventDefault();
-    const monthly = parseFloat(vMonthly);
-    const units = parseFloat(vUnits);
-    if (!vLabel || isNaN(monthly) || isNaN(units) || units === 0) return;
-    addVasteKosItem({ label: vLabel, monthlyCost: monthly, unitsPerMonth: units });
+    const monthly = parseFloat(fMonthly);
+    const units = parseFloat(fUnits);
+    if (!fLabel || isNaN(monthly) || isNaN(units) || units === 0) return;
+    addFixedCostItem({ label: fLabel, monthlyCost: monthly, unitsPerMonth: units });
     setVLabel(""); setVMonthly(""); setVUnits("");
   }
 
-  function submitBedryf(e: React.FormEvent) {
+  function submitOperating(e: React.FormEvent) {
     e.preventDefault();
-    const perHour = parseFloat(bPerHour);
-    if (!bLabel || isNaN(perHour)) return;
-    addBedryfskosItem({ label: bLabel, costPerHour: perHour });
+    const perHour = parseFloat(oPerHour);
+    if (!oLabel || isNaN(perHour)) return;
+    addOperatingCostItem({ label: oLabel, costPerHour: perHour });
     setBLabel(""); setBPerHour("");
   }
 
@@ -78,30 +78,30 @@ export function CostPanel() {
           <p style={s.hint}>Tool usage cost × station hours</p>
         </Section>
 
-        {/* ── Vaste Kostes ── */}
-        <Section icon={<Building2 size={13} />} label="Vaste Kostes" value={R(bd.vasteKosCost)} color="#DC2626">
+        {/* ── Fixed Costs ── */}
+        <Section icon={<Building2 size={13} />} label="Fixed Costs" value={R(bd.fixedCost)} color="#DC2626">
           <p style={s.hint}>Monthly overhead ÷ units/month</p>
 
-          {vasteKosItems.map((v) => (
+          {fixedCostItems.map((v) => (
             <div key={v.id} style={s.lineItem}>
               <span style={s.lineLabel}>{v.label}</span>
               <span style={s.lineValue}>
                 {R(v.unitsPerMonth > 0 ? v.monthlyCost / v.unitsPerMonth : 0)}/unit
               </span>
-              <button onClick={() => removeVasteKosItem(v.id)} style={s.removeBtn}>
+              <button onClick={() => removeFixedCostItem(v.id)} style={s.removeBtn}>
                 <X size={11} />
               </button>
             </div>
           ))}
 
-          <form onSubmit={submitVaste} style={s.addForm}>
-            <input style={s.input} placeholder="Label (e.g. Rent)" value={vLabel}
+          <form onSubmit={submitFixed} style={s.addForm}>
+            <input style={s.input} placeholder="Label (e.g. Rent)" value={fLabel}
               onChange={(e) => setVLabel(e.target.value)} />
             <div style={s.inputRow}>
               <input style={{ ...s.input, flex: 1 }} placeholder="R/month" type="number" min="0"
-                value={vMonthly} onChange={(e) => setVMonthly(e.target.value)} />
+                value={fMonthly} onChange={(e) => setVMonthly(e.target.value)} />
               <input style={{ ...s.input, flex: 1 }} placeholder="units/month" type="number" min="1"
-                value={vUnits} onChange={(e) => setVUnits(e.target.value)} />
+                value={fUnits} onChange={(e) => setVUnits(e.target.value)} />
             </div>
             <button type="submit" style={s.addBtn}>
               <Plus size={11} /> Add
@@ -109,25 +109,25 @@ export function CostPanel() {
           </form>
         </Section>
 
-        {/* ── Bedryfskostes ── */}
-        <Section icon={<Zap size={13} />} label="Bedryfskostes" value={R(bd.bedryfskosCell)} color="#0891B2">
+        {/* ── Operating Costs ── */}
+        <Section icon={<Zap size={13} />} label="Operating Costs" value={R(bd.operatingCost)} color="#0891B2">
           <p style={s.hint}>Variable cost/hr × total production hours</p>
 
-          {bedryfskosItems.map((b) => (
+          {operatingCostItems.map((b) => (
             <div key={b.id} style={s.lineItem}>
               <span style={s.lineLabel}>{b.label}</span>
               <span style={s.lineValue}>{R(b.costPerHour)}/hr</span>
-              <button onClick={() => removeBedryfskosItem(b.id)} style={s.removeBtn}>
+              <button onClick={() => removeOperatingCostItem(b.id)} style={s.removeBtn}>
                 <X size={11} />
               </button>
             </div>
           ))}
 
-          <form onSubmit={submitBedryf} style={s.addForm}>
-            <input style={s.input} placeholder="Label (e.g. Electricity)" value={bLabel}
+          <form onSubmit={submitOperating} style={s.addForm}>
+            <input style={s.input} placeholder="Label (e.g. Electricity)" value={oLabel}
               onChange={(e) => setBLabel(e.target.value)} />
             <input style={s.input} placeholder="R/hr" type="number" min="0"
-              value={bPerHour} onChange={(e) => setBPerHour(e.target.value)} />
+              value={oPerHour} onChange={(e) => setBPerHour(e.target.value)} />
             <button type="submit" style={s.addBtn}>
               <Plus size={11} /> Add
             </button>
@@ -147,8 +147,8 @@ export function CostPanel() {
               { cost: bd.labourCost,    color: "#2563EB" },
               { cost: bd.materialCost,  color: "#059669" },
               { cost: bd.machineCost,   color: "#D97706" },
-              { cost: bd.vasteKosCost,  color: "#DC2626" },
-              { cost: bd.bedryfskosCell,color: "#0891B2" },
+              { cost: bd.fixedCost,  color: "#DC2626" },
+              { cost: bd.operatingCost,color: "#0891B2" },
             ].filter((x) => x.cost > 0).map((x, i) => (
               <div key={i} style={{
                 ...s.barSegment,

@@ -94,14 +94,14 @@ export interface StationNode {
 
 /* ── Overhead cost lines ─────────────────────────── */
 
-export interface VasteKosItem {
+export interface FixedCostItem {
   id: string;
   label: string;          // e.g. "Rent", "Insurance"
   monthlyCost: number;    // R/month
   unitsPerMonth: number;  // units produced / month → allocated per unit
 }
 
-export interface BedryfskosItem {
+export interface OperatingCostItem {
   id: string;
   label: string;          // e.g. "Electricity", "Gas"
   costPerHour: number;    // R/hr consumed across all stations
@@ -132,7 +132,7 @@ export interface CostBreakdown {
   labourCost: number;
   materialCost: number;
   machineCost: number;
-  vasteKosCost: number;
-  bedryfskosCell: number;
+  fixedCost: number;
+  operatingCost: number;
   totalPerUnit: number;
 }

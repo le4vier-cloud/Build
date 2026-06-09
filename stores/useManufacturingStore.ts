@@ -13,8 +13,8 @@ import {
   NodeStaff,
   NodeMaterial,
   NodeTool,
-  VasteKosItem,
-  BedryfskosItem,
+  FixedCostItem,
+  OperatingCostItem,
   CostBreakdown,
 } from '@/types/manufacturing';
 
@@ -31,8 +31,8 @@ interface ManufacturingStore {
   toolResources: ToolResource[];
 
   /* ── Overhead cost lines ──────────────────────── */
-  vasteKosItems: VasteKosItem[];
-  bedryfskosItems: BedryfskosItem[];
+  fixedCostItems: FixedCostItem[];
+  operatingCostItems: OperatingCostItem[];
 
   /* ── Current canvas state ─────────────────────── */
   selectedProduct: Product | null;
@@ -88,10 +88,10 @@ interface ManufacturingStore {
   removeTaskFromWorkflow: (workflowId: string, taskId: string) => void;
 
   /* ── Actions: overhead cost lines ────────────── */
-  addVasteKosItem: (item: Omit<VasteKosItem, 'id'>) => void;
-  removeVasteKosItem: (id: string) => void;
-  addBedryfskosItem: (item: Omit<BedryfskosItem, 'id'>) => void;
-  removeBedryfskosItem: (id: string) => void;
+  addFixedCostItem: (item: Omit<FixedCostItem, 'id'>) => void;
+  removeFixedCostItem: (id: string) => void;
+  addOperatingCostItem: (item: Omit<OperatingCostItem, 'id'>) => void;
+  removeOperatingCostItem: (id: string) => void;
 
   /* ── Selectors ────────────────────────────────── */
   calculateTiming: () => void;
@@ -114,8 +114,8 @@ export const useManufacturingStore = create<ManufacturingStore>((set, get) => ({
   staffResources: [],
   partResources: [],
   toolResources: [],
-  vasteKosItems: [],
-  bedryfskosItems: [],
+  fixedCostItems: [],
+  operatingCostItems: [],
   selectedProduct: null,
   selectedOptions: [],
   currentProcess: null,
@@ -326,21 +326,21 @@ export const useManufacturingStore = create<ManufacturingStore>((set, get) => ({
     })),
 
   /* ── Overhead cost lines ──────────────────────── */
-  addVasteKosItem: (item) =>
+  addFixedCostItem: (item) =>
     set((state) => ({
-      vasteKosItems: [...state.vasteKosItems, { ...item, id: `vk-${Date.now()}` }],
+      fixedCostItems: [...state.fixedCostItems, { ...item, id: `fc-${Date.now()}` }],
     })),
 
-  removeVasteKosItem: (id) =>
-    set((state) => ({ vasteKosItems: state.vasteKosItems.filter((v) => v.id !== id) })),
+  removeFixedCostItem: (id) =>
+    set((state) => ({ fixedCostItems: state.fixedCostItems.filter((v) => v.id !== id) })),
 
-  addBedryfskosItem: (item) =>
+  addOperatingCostItem: (item) =>
     set((state) => ({
-      bedryfskosItems: [...state.bedryfskosItems, { ...item, id: `bk-${Date.now()}` }],
+      operatingCostItems: [...state.operatingCostItems, { ...item, id: `oc-${Date.now()}` }],
     })),
 
-  removeBedryfskosItem: (id) =>
-    set((state) => ({ bedryfskosItems: state.bedryfskosItems.filter((b) => b.id !== id) })),
+  removeOperatingCostItem: (id) =>
+    set((state) => ({ operatingCostItems: state.operatingCostItems.filter((b) => b.id !== id) })),
 
   /* ── Selectors ────────────────────────────────── */
   getNodeDuration: (node) => {
@@ -409,7 +409,7 @@ export const useManufacturingStore = create<ManufacturingStore>((set, get) => ({
   },
 
   getCostBreakdown: () => {
-    const { stationNodes, vasteKosItems, bedryfskosItems } = get();
+    const { stationNodes, fixedCostItems, operatingCostItems } = get();
     const stageGroups = get().getStageGroups();
 
     // Total production time (critical path)
@@ -436,18 +436,18 @@ export const useManufacturingStore = create<ManufacturingStore>((set, get) => ({
       node.assignedTools.forEach((t) => { machineCost += t.costPerHour * durHours; });
     });
 
-    // Vaste Kostes: monthly_cost / units_per_month → allocated per unit
-    const vasteKosCost = vasteKosItems.reduce(
+    // Fixed Costs: monthly_cost / units_per_month → allocated per unit
+    const fixedCost = fixedCostItems.reduce(
       (sum, v) => sum + (v.unitsPerMonth > 0 ? v.monthlyCost / v.unitsPerMonth : 0),
       0
     );
 
-    // Bedryfskostes: costPerHour × total production hours
-    const bedryfskosCell = bedryfskosItems.reduce((sum, b) => sum + b.costPerHour * totalHours, 0);
+    // Operating Costs: costPerHour × total production hours
+    const operatingCost = operatingCostItems.reduce((sum, b) => sum + b.costPerHour * totalHours, 0);
 
-    const totalPerUnit = labourCost + materialCost + machineCost + vasteKosCost + bedryfskosCell;
+    const totalPerUnit = labourCost + materialCost + machineCost + fixedCost + operatingCost;
 
-    return { totalMinutes, labourCost, materialCost, machineCost, vasteKosCost, bedryfskosCell, totalPerUnit };
+    return { totalMinutes, labourCost, materialCost, machineCost, fixedCost, operatingCost, totalPerUnit };
   },
 
   getTotalCost: () => get().getCostBreakdown().totalPerUnit,
