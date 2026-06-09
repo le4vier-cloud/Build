@@ -16,6 +16,7 @@ import {
   type Node,
   type Edge,
   type Connection,
+  type NodeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
@@ -27,7 +28,7 @@ import {
 } from "@/types/factory";
 import {
   MousePointer2, Square, Spline, Maximize2, Minimize2,
-  Building2, X, Plus, Save, RotateCcw, Undo2,
+  Building2, X, Plus, Save, RotateCcw, Undo2, Keyboard,
 } from "lucide-react";
 import { Cpu, Wrench, CheckCheck, Archive, Truck, Briefcase, Package, Send } from "lucide-react";
 
@@ -144,9 +145,14 @@ function FactoryCanvasInner({
 
   const {
     zones, nodes: storeNodes, edges: storeEdges,
-    addZone, updateNodePosition, setSelectedNode,
+    addZone, removeZone, updateNodePosition, setSelectedNode,
     addFlowPath,
   } = useFactoryStore();
+
+  /* ── Clipboard ──────────────────────────────────── */
+  type ClipEntry = { zone: FactoryZone; pos: { x: number; y: number } };
+  const clipboardRef  = useRef<ClipEntry[]>([]);
+  const pasteCountRef = useRef(0);
 
   const buildRfNodes = (): Node[] =>
     storeNodes.map((n) => {
@@ -180,6 +186,88 @@ function FactoryCanvasInner({
   useEffect(() => { setRfNodes(buildRfNodes()); }, [storeNodes, zones]);
   useEffect(() => { setRfEdges(buildRfEdges()); }, [storeEdges]);
   useEffect(() => { if (storeNodes.length > 0) fitView({ padding: 0.2 }); }, []);
+
+  /* Sync RF delete-key removals back to the store */
+  const handleNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      changes.forEach((ch) => {
+        if (ch.type === "remove") {
+          const sn = storeNodes.find((n) => n.id === ch.id);
+          if (sn) removeZone(sn.zoneId);
+        }
+      });
+      onNodesChange(changes);
+    },
+    [onNodesChange, storeNodes, removeZone]
+  );
+
+  /* Copy / Paste / Duplicate / Select-All keyboard shortcuts */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const cmd = e.metaKey || e.ctrlKey;
+
+      /* Select All — ⌘A */
+      if (cmd && e.key === "a") {
+        e.preventDefault();
+        setRfNodes((ns) => ns.map((n) => ({ ...n, selected: true })));
+        return;
+      }
+
+      /* Copy — ⌘C */
+      if (cmd && e.key === "c") {
+        e.preventDefault();
+        const sel = rfNodes.filter((n) => n.selected);
+        if (!sel.length) return;
+        clipboardRef.current = sel.flatMap((n) => {
+          const sn = storeNodes.find((s) => s.id === n.id);
+          const zone = sn ? zones.find((z) => z.id === sn.zoneId) : null;
+          if (!zone) return [];
+          return [{ zone, pos: { x: n.position.x, y: n.position.y } }];
+        });
+        pasteCountRef.current = 0;
+        return;
+      }
+
+      /* Paste — ⌘V */
+      if (cmd && e.key === "v") {
+        e.preventDefault();
+        if (!clipboardRef.current.length) return;
+        pasteCountRef.current++;
+        const off = pasteCountRef.current * 20;
+        clipboardRef.current.forEach(({ zone, pos }) => {
+          addZone(
+            { name: zone.name, type: zone.type, description: zone.description, capacity: zone.capacity },
+            { x: Math.round((pos.x + off) / 20) * 20, y: Math.round((pos.y + off) / 20) * 20 },
+          );
+        });
+        return;
+      }
+
+      /* Duplicate — ⌘D */
+      if (cmd && e.key === "d") {
+        e.preventDefault();
+        rfNodes.filter((n) => n.selected).forEach((n) => {
+          const sn = storeNodes.find((s) => s.id === n.id);
+          const zone = sn ? zones.find((z) => z.id === sn.zoneId) : null;
+          if (!zone) return;
+          addZone(
+            { name: zone.name, type: zone.type, description: zone.description, capacity: zone.capacity },
+            { x: Math.round((n.position.x + 20) / 20) * 20, y: Math.round((n.position.y + 20) / 20) * 20 },
+          );
+        });
+        return;
+      }
+
+      /* Fit view — ⌘⇧H */
+      if (cmd && e.shiftKey && (e.key === "h" || e.key === "H")) {
+        e.preventDefault();
+        fitView({ padding: 0.15, duration: 300 });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [rfNodes, storeNodes, zones, addZone, fitView, setRfNodes]);
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -230,7 +318,7 @@ function FactoryCanvasInner({
         nodes={rfNodes}
         edges={rfEdges}
         nodeTypes={nodeTypes}
-        onNodesChange={onNodesChange}
+        onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onNodeDragStop={onNodeDragStop}
@@ -701,17 +789,139 @@ function ToolBtn({
 }
 
 /* ══════════════════════════════════════════════════
+   Shortcuts Dropdown
+══════════════════════════════════════════════════ */
+function ShortcutsDropdown({ t }: { t: Theme }) {
+  type Row = { desc: string; keys: string[] };
+  const groups: { title: string; rows: Row[] }[] = [
+    {
+      title: "Tools",
+      rows: [
+        { desc: "Select",        keys: ["V"] },
+        { desc: "Add Zone",      keys: ["S"] },
+        { desc: "Connect",       keys: ["C"] },
+        { desc: "Cancel",        keys: ["Esc"] },
+      ],
+    },
+    {
+      title: "Edit",
+      rows: [
+        { desc: "Undo",          keys: ["⌘", "Z"] },
+        { desc: "Copy",          keys: ["⌘", "C"] },
+        { desc: "Paste",         keys: ["⌘", "V"] },
+        { desc: "Duplicate",     keys: ["⌘", "D"] },
+        { desc: "Select All",    keys: ["⌘", "A"] },
+        { desc: "Delete",        keys: ["⌫"] },
+      ],
+    },
+    {
+      title: "View",
+      rows: [
+        { desc: "Fullscreen",    keys: ["F"] },
+        { desc: "Zoom In",       keys: ["⌘", "+"] },
+        { desc: "Zoom Out",      keys: ["⌘", "−"] },
+        { desc: "Fit to Screen", keys: ["⌘", "⇧", "H"] },
+      ],
+    },
+  ];
+
+  const kbdStyle: React.CSSProperties = {
+    display: "inline-flex", alignItems: "center", justifyContent: "center",
+    minWidth: 22, height: 20,
+    padding: "0 5px",
+    backgroundColor: t.canvasBg,
+    border: `1px solid ${t.border}`,
+    borderBottom: `2px solid ${t.border}`,
+    borderRadius: 4,
+    fontSize: 11, fontFamily: "monospace", fontWeight: 700,
+    color: t.textPrimary,
+    lineHeight: 1,
+    userSelect: "none",
+  };
+
+  return (
+    <div style={{
+      position: "absolute",
+      top: "calc(100% + 8px)",
+      right: 0,
+      width: 272,
+      zIndex: 500,
+      backgroundColor: t.panelBg,
+      border: `1px solid ${t.border}`,
+      borderRadius: 12,
+      boxShadow: "0 16px 48px rgba(0,0,0,0.22), 0 2px 8px rgba(0,0,0,0.1)",
+      overflow: "hidden",
+    }}>
+      {/* Header */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 6,
+        padding: "10px 14px 9px",
+        borderBottom: `1px solid ${t.borderFaint}`,
+      }}>
+        <Keyboard size={12} color={t.textMuted} />
+        <span style={{
+          fontSize: 11, fontWeight: 700, color: t.textMuted,
+          textTransform: "uppercase", letterSpacing: "0.09em",
+        }}>
+          Keyboard Shortcuts
+        </span>
+      </div>
+
+      {/* Groups */}
+      <div style={{ padding: "8px 0 10px" }}>
+        {groups.map((group, gi) => (
+          <div key={group.title}>
+            {gi > 0 && (
+              <div style={{ height: 1, backgroundColor: t.borderFaint, margin: "6px 14px" }} />
+            )}
+            {/* Group label */}
+            <div style={{
+              padding: "4px 14px 3px",
+              fontSize: 9, fontWeight: 800, color: t.textDim,
+              textTransform: "uppercase", letterSpacing: "0.14em",
+              fontFamily: "monospace",
+            }}>
+              {group.title}
+            </div>
+            {/* Rows */}
+            {group.rows.map((row) => (
+              <div key={row.desc} style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "3px 14px",
+              }}>
+                <span style={{ fontSize: 12, color: t.textMuted }}>{row.desc}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                  {row.keys.map((k, ki) => (
+                    <span key={ki} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                      {ki > 0 && (
+                        <span style={{ fontSize: 9, color: t.textDim, lineHeight: 1 }}>+</span>
+                      )}
+                      <kbd style={kbdStyle}>{k}</kbd>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════
    Main page
 ══════════════════════════════════════════════════ */
 export default function FactoryPage() {
   const isDark = useDarkMode();
   const t = isDark ? DARK : LIGHT;
 
-  const [toolMode,     setToolMode]     = useState<ToolMode>("select");
-  const [addZoneType,  setAddZoneType]  = useState<ZoneType | null>(null);
-  const [showDialog,   setShowDialog]   = useState(false);
-  const [mousePos,     setMousePos]     = useState({ x: 0, y: 0 });
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [toolMode,      setToolMode]      = useState<ToolMode>("select");
+  const [addZoneType,   setAddZoneType]   = useState<ZoneType | null>(null);
+  const [showDialog,    setShowDialog]    = useState(false);
+  const [mousePos,      setMousePos]      = useState({ x: 0, y: 0 });
+  const [isFullscreen,  setIsFullscreen]  = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { zones, nodes, clearFloor, undo, canUndo } = useFactoryStore();
@@ -833,6 +1043,28 @@ export default function FactoryPage() {
         <button onClick={toggleFullscreen} title={isFullscreen ? "Exit Fullscreen (F)" : "Fullscreen (F)"} style={headerBtnGhost}>
           {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
         </button>
+
+        {/* Shortcuts widget */}
+        {showShortcuts && (
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 499 }}
+            onClick={() => setShowShortcuts(false)}
+          />
+        )}
+        <div style={{ position: "relative" }}>
+          <button
+            onClick={() => setShowShortcuts((s) => !s)}
+            title="Keyboard Shortcuts"
+            style={{
+              ...headerBtnGhost,
+              backgroundColor: showShortcuts ? t.toolHover : "transparent",
+              color: showShortcuts ? t.textPrimary : t.textMuted,
+            }}
+          >
+            <Keyboard size={13} />
+          </button>
+          {showShortcuts && <ShortcutsDropdown t={t} />}
+        </div>
       </div>
 
       {/* ── Main area ── */}
@@ -879,7 +1111,7 @@ export default function FactoryPage() {
         <StatusItem label="SNAP" value="ON" t={t} />
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 9, color: t.textDim, fontFamily: "monospace" }}>
-          V — select · S — add zone · C — connect · F — fullscreen · ESC — cancel
+          V — select · S — add · C — connect · F — fullscreen · ⌘C/V — copy/paste · ⌘D — duplicate · ESC — cancel
         </span>
       </div>
 
