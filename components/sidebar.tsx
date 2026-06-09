@@ -6,10 +6,11 @@ import {
   Users, LayoutGrid, ShoppingBag, Scissors,
   Warehouse, ArrowUpCircle, Link2, Archive,
   Workflow, UserCircle, CalendarDays,
-  Home, Settings, LogOut, User,
+  Home, Settings, LogOut, User, Building2,
 } from "lucide-react";
 
 const NAV_ITEMS = [
+  { href: "/factory",    icon: Building2,      label: "Factory" },
   { href: "/staff",      icon: Users,          label: "Staff" },
   { href: "/stations",   icon: LayoutGrid,     label: "Stations" },
   { href: "/products",   icon: ShoppingBag,    label: "Products" },
