@@ -638,6 +638,7 @@ function FactoryCanvasInner({
         onNodeClick={onNodeClick} onPaneClick={onPaneClick}
         onNodeContextMenu={onNodeContextMenu} onPaneContextMenu={onPaneContextMenu}
         snapGrid={[20, 20]} snapToGrid fitView
+        autoPanOnNodeDrag autoPanOnConnect autoPanSpeed={20}
         minZoom={0} maxZoom={4}
         proOptions={{ hideAttribution: true }}
         style={{ backgroundColor: t.canvasBg }}
