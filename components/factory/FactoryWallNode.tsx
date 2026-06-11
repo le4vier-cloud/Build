@@ -1,6 +1,6 @@
 "use client";
 
-import { NodeResizer } from "@xyflow/react";
+import { NodeResizeControl } from "@xyflow/react";
 import type { NodeProps } from "@xyflow/react";
 import { useState } from "react";
 import { useFactoryStore } from "@/stores/useFactoryStore";
@@ -15,13 +15,36 @@ export function FactoryWallNode({ id, data, selected }: NodeProps) {
   const { resizeWall } = useFactoryStore();
   const [hovered, setHovered] = useState(false);
 
-  /* ── NodeResizer constraints ────────────────────────
-     Horizontal: height = thickness → clamped; width = length → free
-     Vertical:   width  = thickness → clamped; height = length → free
-  ─────────────────────────────────────────────────── */
-  const resizerProps = isH
-    ? { minWidth: 40,  minHeight: config.minThickness, maxHeight: config.maxThickness }
-    : { minHeight: 40, minWidth:  config.minThickness, maxWidth:  config.maxThickness };
+  /* ── Shared resize-end handler ─────────────────────────────────────
+     Only invoked by length-axis end handles — thickness is read-only
+     from the canvas (controlled exclusively from the properties panel).
+  ──────────────────────────────────────────────────────────────────── */
+  const onResizeEnd = (_e: unknown, params: { x: number; y: number; width: number; height: number }) => {
+    resizeWall(
+      id,
+      { x: params.x, y: params.y },
+      { width: params.width, height: params.height },
+    );
+  };
+
+  /* ── Shared NodeResizeControl props ── */
+  const ctrlBase = {
+    /* Lock the thickness axis so only the length can change:
+       horizontal walls → fix height; vertical walls → fix width */
+    ...(isH
+      ? { minHeight: wall.thickness, maxHeight: wall.thickness, minWidth: 40 }
+      : { minWidth:  wall.thickness, maxWidth:  wall.thickness, minHeight: 40 }),
+    onResizeEnd,
+    style: {
+      width:           10,
+      height:          10,
+      backgroundColor: "#F56300",
+      border:          "2px solid #0F0F14",
+      borderRadius:    2,
+      cursor:          isH ? "ew-resize" : "ns-resize",
+    } satisfies React.CSSProperties,
+    color: "#F56300",
+  };
 
   /* ── Background fill patterns ── */
   const wallBg = isWall
@@ -38,32 +61,31 @@ export function FactoryWallNode({ id, data, selected }: NodeProps) {
 
   const borderStyle = `${selected ? "1.5px" : isWall ? "1.5px" : "2px"} ${isWall ? "solid" : selected ? "solid" : "dashed"} ${borderColor}`;
 
-  /* ── Capsule ends ───────────────────────────────────
+  /* ── Capsule ends ───────────────────────────────────────────────────
      borderRadius: 999px gives semicircular end-caps.
      When two segment tips snap to the same grid point,
      the overlapping rounded caps merge and look joined.
-  ─────────────────────────────────────────────────── */
+  ──────────────────────────────────────────────────────────────────── */
 
   return (
     <>
-      <NodeResizer
-        isVisible={selected}
-        {...resizerProps}
-        lineStyle={{ stroke: "#F56300", strokeWidth: 1.5 }}
-        handleStyle={{
-          width: 8, height: 8,
-          backgroundColor: "#F56300",
-          border: "2px solid #0F0F14",
-          borderRadius: 2,
-        }}
-        onResizeEnd={(_e, params) => {
-          resizeWall(
-            id,
-            { x: params.x, y: params.y },
-            { width: params.width, height: params.height },
-          );
-        }}
-      />
+      {/* ── Resize handles on LENGTH axis ends only ─────────────────────
+          No handles exist on the thickness axis — that is panel-only.
+          Horizontal walls: left ↔ right end caps
+          Vertical walls:   top  ↕ bottom end caps
+      ──────────────────────────────────────────────────────────────── */}
+      {selected && isH && (
+        <>
+          <NodeResizeControl position="left"  {...ctrlBase} />
+          <NodeResizeControl position="right" {...ctrlBase} />
+        </>
+      )}
+      {selected && !isH && (
+        <>
+          <NodeResizeControl position="top"    {...ctrlBase} />
+          <NodeResizeControl position="bottom" {...ctrlBase} />
+        </>
+      )}
 
       {/* Segment body — no connection Handles; ends are purely visual */}
       <div

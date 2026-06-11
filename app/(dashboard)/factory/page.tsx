@@ -420,7 +420,11 @@ function FactoryCanvasInner({
     (e: React.MouseEvent, node: Node) => {
       e.preventDefault();
       const raw = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      /* Sync both the Zustand store selection AND RF's internal selected state so
+         keyboard shortcuts (⌘C, ⌘D, ⌫) that filter rfNodes.filter(n => n.selected)
+         work correctly after a right-click. */
       setSelectedNode(node.id);
+      setRfNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === node.id })));
       setCtxMenu({
         screenX: e.clientX, screenY: e.clientY,
         kind: node.type === "factoryWall" ? "wall" : "zone",
@@ -428,7 +432,7 @@ function FactoryCanvasInner({
         flowX: Math.round(raw.x / 20) * 20, flowY: Math.round(raw.y / 20) * 20,
       });
     },
-    [screenToFlowPosition, setSelectedNode]
+    [screenToFlowPosition, setSelectedNode, setRfNodes]
   );
 
   /* Right-click on canvas */
@@ -727,6 +731,127 @@ function AddZoneDialog({ onClose, onSelectType, t }: { onClose: () => void; onSe
 }
 
 /* ══════════════════════════════════════════════════
+   Scrubby number input  (Figma-style)
+   • Drag horizontally to scrub the value
+   • Click (no drag) to focus and type a precise number
+   • A thin fill bar shows position within the range
+══════════════════════════════════════════════════ */
+function ScrubInput({
+  value, min, max, step = 1, onChange, unit = "", accent, t,
+}: {
+  value: number; min: number; max: number; step?: number;
+  onChange: (v: number) => void; unit?: string; accent: string; t: Theme;
+}) {
+  const [editing,  setEditing]  = useState(false);
+  const [draft,    setDraft]    = useState("");
+  const [dragging, setDragging] = useState(false);
+  const dragRef  = useRef<{ startX: number; startV: number } | null>(null);
+  const didDrag  = useRef(false);
+
+  const snap = (v: number) =>
+    Math.max(min, Math.min(max, Math.round(v / step) * step));
+
+  function startScrub(e: React.MouseEvent) {
+    if (editing) return;
+    e.preventDefault();
+    didDrag.current = false;
+    setDragging(true);
+    dragRef.current = { startX: e.clientX, startV: value };
+
+    function onMove(me: MouseEvent) {
+      if (!dragRef.current) return;
+      const delta = me.clientX - dragRef.current.startX;
+      if (Math.abs(delta) > 2) didDrag.current = true;
+      onChange(snap(dragRef.current.startV + delta));
+    }
+    function onUp() {
+      setDragging(false);
+      dragRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup",   onUp);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup",   onUp);
+  }
+
+  function handleClick() {
+    if (didDrag.current) { didDrag.current = false; return; }
+    setDraft(String(value));
+    setEditing(true);
+  }
+
+  function commit() {
+    const parsed = parseFloat(draft);
+    if (!isNaN(parsed)) onChange(snap(parsed));
+    setEditing(false);
+  }
+
+  const pct = Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100));
+
+  const activeBorder = editing || dragging;
+  return (
+    <div style={{
+      position: "relative", height: 32, borderRadius: 6, overflow: "hidden",
+      border: `1px solid ${activeBorder ? accent : t.inputBorder}`,
+      backgroundColor: t.inputBg,
+      transition: "border-color 0.12s",
+    }}>
+      {/* Fill bar — shows value position within range */}
+      {!editing && (
+        <div style={{
+          position: "absolute", left: 0, top: 0, bottom: 0,
+          width: `${pct}%`,
+          backgroundColor: accent + "22",
+          pointerEvents: "none",
+          transition: dragging ? "none" : "width 0.08s",
+        }} />
+      )}
+
+      {editing ? (
+        <input
+          autoFocus
+          type="number"
+          value={draft}
+          min={min}
+          max={max}
+          step={step}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            e.stopPropagation(); /* block factory shortcuts while typing */
+            if (e.key === "Enter")  commit();
+            if (e.key === "Escape") setEditing(false);
+          }}
+          style={{
+            position: "absolute", inset: 0,
+            width: "100%", height: "100%",
+            backgroundColor: t.inputBg, border: "none", outline: "none",
+            padding: "0 10px", fontSize: 12, color: t.textPrimary,
+            fontFamily: "monospace", fontWeight: 600, textAlign: "center",
+          }}
+        />
+      ) : (
+        <div
+          onMouseDown={startScrub}
+          onClick={handleClick}
+          style={{
+            position: "absolute", inset: 0,
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "0 8px", cursor: "ew-resize", userSelect: "none",
+          }}
+        >
+          <span style={{ fontSize: 9, color: t.textDim, fontFamily: "monospace", letterSpacing: "-1px" }}>◂◂</span>
+          <span style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 700, color: t.textPrimary }}>
+            {value}{unit}
+          </span>
+          <span style={{ fontSize: 9, color: t.textDim, fontFamily: "monospace", letterSpacing: "-1px" }}>▸▸</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════
    Properties Panel
 ══════════════════════════════════════════════════ */
 function PropertiesPanel({ t }: { t: Theme }) {
@@ -787,18 +912,28 @@ function PropertiesPanel({ t }: { t: Theme }) {
             </div>
           </div>
           <div>
-            <label style={lbl}>Thickness — {selectedWall.thickness}u <span style={{ fontSize: 9, color: t.textDim }}>({cfg.minThickness}–{cfg.maxThickness})</span></label>
-            <input type="range" min={cfg.minThickness} max={cfg.maxThickness} step={2} value={selectedWall.thickness} onChange={(e) => updateWall(selectedWall.id, { thickness: parseInt(e.target.value) })} style={{ width: "100%", accentColor: acc }} />
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
-              <span style={{ fontSize: 9, color: t.textDim, fontFamily: "monospace" }}>{cfg.minThickness}u</span>
-              <span style={{ fontSize: 9, color: t.textDim, fontFamily: "monospace" }}>{cfg.maxThickness}u</span>
-            </div>
+            <label style={lbl}>
+              Thickness
+              <span style={{ fontSize: 9, color: t.textDim, fontWeight: 400, marginLeft: 5 }}>
+                {cfg.minThickness} – {cfg.maxThickness}
+              </span>
+            </label>
+            <ScrubInput
+              value={selectedWall.thickness}
+              min={cfg.minThickness}
+              max={cfg.maxThickness}
+              step={2}
+              onChange={(v) => updateWall(selectedWall.id, { thickness: v })}
+              unit="u"
+              accent={acc}
+              t={t}
+            />
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <Stat label="L" value={`${Math.round(selectedWall.length / 20)}u`}    t={t} />
             <Stat label="T" value={`${Math.round(selectedWall.thickness / 20)}u`} t={t} />
           </div>
-          <p style={{ fontSize: 10, color: t.textDim, lineHeight: 1.6 }}>Drag handles to change length. Use slider for thickness.</p>
+          <p style={{ fontSize: 10, color: t.textDim, lineHeight: 1.6 }}>Drag end handles to resize length. Scrub or click to set thickness.</p>
           <button onClick={() => removeWall(selectedWall.id)} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px", height: 34, backgroundColor: "transparent", border: "1px solid #FF3B3030", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#FF3B30", marginTop: 4 }}>
             Remove {cfg.label}
           </button>
@@ -1046,14 +1181,19 @@ export default function FactoryPage() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if ((e.metaKey || e.ctrlKey) && e.key === "z") { e.preventDefault(); undo(); return; }
-      if (e.key === "v" || e.key === "V" || e.key === "Escape") { setToolMode("select"); setAddZoneType(null); }
-      if (e.key === "s" || e.key === "S") setShowDialog(true);
-      if (e.key === "c" || e.key === "C") setToolMode("connect");
-      if (e.key === "w" || e.key === "W") setToolMode("wall");
-      if (e.key === "k" || e.key === "K") setToolMode("walkway");
-      if (e.key === "o" || e.key === "O") setWallOrientation((o) => o === "horizontal" ? "vertical" : "horizontal");
-      if (e.key === "f" || e.key === "F") toggleFullscreen();
+      const cmd = e.metaKey || e.ctrlKey;
+      if (cmd && e.key === "z") { e.preventDefault(); undo(); return; }
+      /* Single-key tool shortcuts only fire when NO cmd/ctrl modifier is held,
+         otherwise ⌘C/⌘V/⌘D etc. would accidentally switch tool modes. */
+      if (!cmd) {
+        if (e.key === "v" || e.key === "V" || e.key === "Escape") { setToolMode("select"); setAddZoneType(null); }
+        if (e.key === "s" || e.key === "S") setShowDialog(true);
+        if (e.key === "c" || e.key === "C") setToolMode("connect");
+        if (e.key === "w" || e.key === "W") setToolMode("wall");
+        if (e.key === "k" || e.key === "K") setToolMode("walkway");
+        if (e.key === "o" || e.key === "O") setWallOrientation((o) => o === "horizontal" ? "vertical" : "horizontal");
+        if (e.key === "f" || e.key === "F") toggleFullscreen();
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
