@@ -29,6 +29,8 @@ interface FactoryStore {
   updateZone:          (id: string, updates: Partial<Omit<FactoryZone, "id">>) => void;
   removeZone:          (zoneId: string) => void;
   updateNodePosition:  (nodeId: string, pos: { x: number; y: number }) => void;
+  /** Move any mix of zone-nodes and walls in one history step */
+  batchMoveNodes:      (moves: Array<{ id: string; position: { x: number; y: number } }>) => void;
   updateNodeDimensions:(nodeId: string, dims: { width: number; height: number }) => void;
   resizeNode:          (nodeId: string, pos: { x: number; y: number }, dims: { width: number; height: number }) => void;
   setSelectedNode:     (nodeId: string | null) => void;
@@ -128,6 +130,22 @@ export const useFactoryStore = create<FactoryStore>((set, get) => {
       pushHistory();
       set((s) => ({
         nodes: s.nodes.map((n) => n.id === nodeId ? { ...n, position: pos } : n),
+      }));
+    },
+
+    /* One history entry for the entire multi-node drag — zones and walls
+       are updated together so their relative layout is preserved on undo. */
+    batchMoveNodes: (moves) => {
+      pushHistory();
+      set((s) => ({
+        nodes: s.nodes.map((n) => {
+          const m = moves.find((mv) => mv.id === n.id);
+          return m ? { ...n, position: m.position } : n;
+        }),
+        walls: s.walls.map((w) => {
+          const m = moves.find((mv) => mv.id === w.id);
+          return m ? { ...w, position: m.position } : w;
+        }),
       }));
     },
 

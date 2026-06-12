@@ -215,7 +215,7 @@ function FactoryCanvasInner({
 
   const {
     zones, nodes: storeNodes, edges: storeEdges, walls,
-    addZone, removeZone, updateNodePosition, setSelectedNode, addFlowPath,
+    addZone, removeZone, updateNodePosition, batchMoveNodes, setSelectedNode, addFlowPath,
     addWall, removeWall, updateWall,
   } = useFactoryStore();
 
@@ -500,11 +500,15 @@ function FactoryCanvasInner({
   );
 
   const onNodeDragStop = useCallback(
-    (_e: unknown, node: Node) => {
-      if (node.type === "factoryZone") updateNodePosition(node.id, node.position);
-      else if (node.type === "factoryWall") updateWall(node.id, { position: node.position });
+    /* ReactFlow passes ALL selected nodes as the third arg — use that to
+       save every node's final position in one atomic store update so the
+       group's relative layout is preserved and undo covers the whole move. */
+    (_e: unknown, _node: Node, draggedNodes: Node[]) => {
+      batchMoveNodes(
+        draggedNodes.map((n) => ({ id: n.id, position: n.position })),
+      );
     },
-    [updateNodePosition, updateWall]
+    [batchMoveNodes]
   );
 
   const onNodeClick = useCallback(
