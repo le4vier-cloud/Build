@@ -191,17 +191,25 @@ function CtxLabel({ children, t }: { children: React.ReactNode; t: Theme }) {
 ══════════════════════════════════════════════════ */
 function FactoryCanvasInner({
   toolMode, addZoneType, onAddZoneTypeUsed,
-  wallOrientation, onOpenAddZoneDialog, onMousePosChange, t,
+  wallOrientation, onOpenAddZoneDialog, onMousePosChange,
+  onToolModeChange, onAddZoneTypeChange, onWallOrientationToggle,
+  onToggleFullscreen, undo,
+  t,
 }: {
-  toolMode:            ToolMode;
-  addZoneType:         ZoneType | null;
-  onAddZoneTypeUsed:   () => void;
-  wallOrientation:     Orientation;
-  onOpenAddZoneDialog: () => void;
-  onMousePosChange:    (x: number, y: number) => void;
-  t:                   Theme;
+  toolMode:                ToolMode;
+  addZoneType:             ZoneType | null;
+  onAddZoneTypeUsed:       () => void;
+  wallOrientation:         Orientation;
+  onOpenAddZoneDialog:     () => void;
+  onMousePosChange:        (x: number, y: number) => void;
+  onToolModeChange:        (mode: ToolMode) => void;
+  onAddZoneTypeChange:     (type: ZoneType | null) => void;
+  onWallOrientationToggle: () => void;
+  onToggleFullscreen:      () => void;
+  undo:                    () => void;
+  t:                       Theme;
 }) {
-  const { screenToFlowPosition, fitView } = useReactFlow();
+  const { screenToFlowPosition, fitView, zoomIn, zoomOut } = useReactFlow();
   const { zoom } = useViewport();
 
   const {
@@ -340,17 +348,47 @@ function FactoryCanvasInner({
     });
   }, [addZone]);
 
-  /* ── Keyboard shortcuts ─────────────────────────── */
+  /* ══════════════════════════════════════════════════════════════════
+     Single consolidated keyboard handler — registered in capture phase
+     so it fires first, before any bubble-phase handlers (including
+     ReactFlow internals that might call stopPropagation).
+     All shortcuts — tool modes, edit operations, view — live here.
+  ══════════════════════════════════════════════════════════════════ */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      /* Skip when focus is inside a real text field */
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target instanceof HTMLElement && e.target.isContentEditable)
+      ) return;
+
       const cmd = e.metaKey || e.ctrlKey;
 
+      /* ── Zoom ── */
+      if (cmd && (e.key === "=" || e.key === "+" || e.key === "NumpadAdd")) {
+        e.preventDefault(); zoomIn({ duration: 200 }); return;
+      }
+      if (cmd && (e.key === "-" || e.key === "_" || e.key === "NumpadSubtract")) {
+        e.preventDefault(); zoomOut({ duration: 200 }); return;
+      }
+
+      /* ── Undo ── */
+      if (cmd && e.key === "z") { e.preventDefault(); undo(); return; }
+
+      /* ── Fit to screen ── */
+      if (cmd && e.shiftKey && (e.key === "h" || e.key === "H")) {
+        e.preventDefault(); fitView({ padding: 0.15, duration: 300 }); return;
+      }
+
+      /* ── Select all ── */
       if (cmd && e.key === "a") {
         e.preventDefault();
         setRfNodes((ns) => ns.map((n) => ({ ...n, selected: true })));
         return;
       }
+
+      /* ── Copy ── */
       if (cmd && e.key === "c") {
         e.preventDefault();
         const sel = rfNodes.filter((n) => n.selected && n.type === "factoryZone");
@@ -364,6 +402,8 @@ function FactoryCanvasInner({
         pasteCountRef.current = 0;
         return;
       }
+
+      /* ── Paste ── */
       if (cmd && e.key === "v") {
         e.preventDefault();
         if (!clipboardRef.current.length) return;
@@ -371,6 +411,8 @@ function FactoryCanvasInner({
         doPaste(pasteCountRef.current * 20);
         return;
       }
+
+      /* ── Duplicate ── */
       if (cmd && e.key === "d") {
         e.preventDefault();
         rfNodes.filter((n) => n.selected && n.type === "factoryZone").forEach((n) => {
@@ -385,14 +427,37 @@ function FactoryCanvasInner({
         });
         return;
       }
-      if (cmd && e.shiftKey && (e.key === "h" || e.key === "H")) {
-        e.preventDefault();
-        fitView({ padding: 0.15, duration: 300 });
+
+      /* ── Delete selected nodes (explicit — don't rely on RF canvas focus) ── */
+      if (e.key === "Backspace" || e.key === "Delete") {
+        rfNodes.filter((n) => n.selected).forEach((n) => deleteNodeById(n.id));
+        return;
+      }
+
+      /* ── Single-key tool shortcuts (no modifier) ── */
+      if (!cmd) {
+        if (e.key === "v" || e.key === "V" || e.key === "Escape") {
+          onToolModeChange("select"); onAddZoneTypeChange(null);
+        }
+        if (e.key === "s" || e.key === "S") onOpenAddZoneDialog();
+        if (e.key === "c" || e.key === "C") onToolModeChange("connect");
+        if (e.key === "w" || e.key === "W") onToolModeChange("wall");
+        if (e.key === "k" || e.key === "K") onToolModeChange("walkway");
+        if (e.key === "o" || e.key === "O") onWallOrientationToggle();
+        if (e.key === "f" || e.key === "F") onToggleFullscreen();
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [rfNodes, storeNodes, zones, addZone, fitView, setRfNodes, doPaste]);
+
+    /* capture:true — fires before bubble phase, immune to stopPropagation
+       called on any descendant element; no need for canvas focus          */
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [
+    rfNodes, storeNodes, zones, addZone, fitView, zoomIn, zoomOut,
+    setRfNodes, doPaste, deleteNodeById, undo,
+    onToolModeChange, onAddZoneTypeChange, onOpenAddZoneDialog,
+    onWallOrientationToggle, onToggleFullscreen,
+  ]);
 
   /* ── RF event handlers ─────────────────────────── */
   const onConnect = useCallback(
@@ -1178,26 +1243,9 @@ export default function FactoryPage() {
     else document.exitFullscreen();
   };
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      const cmd = e.metaKey || e.ctrlKey;
-      if (cmd && e.key === "z") { e.preventDefault(); undo(); return; }
-      /* Single-key tool shortcuts only fire when NO cmd/ctrl modifier is held,
-         otherwise ⌘C/⌘V/⌘D etc. would accidentally switch tool modes. */
-      if (!cmd) {
-        if (e.key === "v" || e.key === "V" || e.key === "Escape") { setToolMode("select"); setAddZoneType(null); }
-        if (e.key === "s" || e.key === "S") setShowDialog(true);
-        if (e.key === "c" || e.key === "C") setToolMode("connect");
-        if (e.key === "w" || e.key === "W") setToolMode("wall");
-        if (e.key === "k" || e.key === "K") setToolMode("walkway");
-        if (e.key === "o" || e.key === "O") setWallOrientation((o) => o === "horizontal" ? "vertical" : "horizontal");
-        if (e.key === "f" || e.key === "F") toggleFullscreen();
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, []);
+  /* Keyboard shortcuts are handled by FactoryCanvasInner (inside the
+     ReactFlowProvider) so zoomIn/zoomOut from useReactFlow are available.
+     No outer handler needed here. */
 
   const handleSelectType = (type: ZoneType) => {
     setAddZoneType(type); setToolMode("add"); setShowDialog(false);
@@ -1281,6 +1329,11 @@ export default function FactoryPage() {
               wallOrientation={wallOrientation}
               onOpenAddZoneDialog={() => setShowDialog(true)}
               onMousePosChange={(x, y) => setMousePos({ x, y })}
+              onToolModeChange={setToolMode}
+              onAddZoneTypeChange={setAddZoneType}
+              onWallOrientationToggle={() => setWallOrientation((o) => o === "horizontal" ? "vertical" : "horizontal")}
+              onToggleFullscreen={toggleFullscreen}
+              undo={undo}
               t={t}
             />
           </ReactFlowProvider>
