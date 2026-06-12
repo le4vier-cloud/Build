@@ -353,6 +353,68 @@ function FactoryCanvasInner({
     });
   }, [addZone, addWall]);
 
+  /* ── Selection-wide helpers ────────────────────────────────────────
+     All operate on every currently-selected RF node so that context
+     menu clicks and keyboard shortcuts share identical behaviour.
+  ──────────────────────────────────────────────────────────────────── */
+
+  /** Copy every selected node (zone or wall) to the clipboard. */
+  const copySelected = useCallback(() => {
+    const sel = rfNodes.filter((n) => n.selected);
+    if (!sel.length) return;
+    clipboardRef.current = sel.flatMap((n): ClipEntry[] => {
+      if (n.type === "factoryZone") {
+        const sn   = storeNodes.find((s) => s.id === n.id);
+        const zone = sn ? zones.find((z) => z.id === sn.zoneId) : null;
+        if (!zone || !sn) return [];
+        return [{ kind: "zone", zone, pos: { x: n.position.x, y: n.position.y }, width: sn.width, height: sn.height }];
+      }
+      if (n.type === "factoryWall") {
+        const wall = walls.find((w) => w.id === n.id);
+        if (!wall) return [];
+        return [{ kind: "wall", wall: { wallType: wall.wallType, orientation: wall.orientation, position: wall.position, length: wall.length, thickness: wall.thickness }, pos: wall.position }];
+      }
+      return [];
+    });
+    pasteCountRef.current = 0;
+  }, [rfNodes, storeNodes, zones, walls]);
+
+  /** Duplicate every selected node offset by +20,+20 — preserves relative layout. */
+  const duplicateSelected = useCallback(() => {
+    rfNodes.filter((n) => n.selected).forEach((n) => {
+      if (n.type === "factoryZone") {
+        const sn   = storeNodes.find((s) => s.id === n.id);
+        const zone = sn ? zones.find((z) => z.id === sn.zoneId) : null;
+        if (!zone || !sn) return;
+        addZone(
+          { name: zone.name, type: zone.type, description: zone.description, capacity: zone.capacity },
+          { x: Math.round((n.position.x + 20) / 20) * 20, y: Math.round((n.position.y + 20) / 20) * 20 },
+          { width: sn.width, height: sn.height },
+        );
+      } else if (n.type === "factoryWall") {
+        const wall = walls.find((w) => w.id === n.id);
+        if (!wall) return;
+        addWall({
+          wallType: wall.wallType, orientation: wall.orientation,
+          position: { x: Math.round((wall.position.x + 20) / 20) * 20, y: Math.round((wall.position.y + 20) / 20) * 20 },
+          length: wall.length, thickness: wall.thickness,
+        });
+      }
+    });
+  }, [rfNodes, storeNodes, zones, walls, addZone, addWall]);
+
+  /** Delete every selected node. */
+  const deleteSelected = useCallback(() => {
+    rfNodes.filter((n) => n.selected).forEach((n) => deleteNodeById(n.id));
+  }, [rfNodes, deleteNodeById]);
+
+  /** Flip orientation of every selected wall / walkway. */
+  const flipSelected = useCallback(() => {
+    rfNodes
+      .filter((n) => n.selected && n.type === "factoryWall")
+      .forEach((n) => flipWallOrientation(n.id));
+  }, [rfNodes, flipWallOrientation]);
+
   /* ══════════════════════════════════════════════════════════════════
      Single consolidated keyboard handler — registered in capture phase
      so it fires first, before any bubble-phase handlers (including
@@ -395,25 +457,7 @@ function FactoryCanvasInner({
 
       /* ── Copy ── */
       if (cmd && e.key === "c") {
-        e.preventDefault();
-        const sel = rfNodes.filter((n) => n.selected);
-        if (!sel.length) return;
-        clipboardRef.current = sel.flatMap((n): ClipEntry[] => {
-          if (n.type === "factoryZone") {
-            const sn   = storeNodes.find((s) => s.id === n.id);
-            const zone = sn ? zones.find((z) => z.id === sn.zoneId) : null;
-            if (!zone || !sn) return [];
-            return [{ kind: "zone", zone, pos: { x: n.position.x, y: n.position.y }, width: sn.width, height: sn.height }];
-          }
-          if (n.type === "factoryWall") {
-            const wall = walls.find((w) => w.id === n.id);
-            if (!wall) return [];
-            return [{ kind: "wall", wall: { wallType: wall.wallType, orientation: wall.orientation, position: wall.position, length: wall.length, thickness: wall.thickness }, pos: wall.position }];
-          }
-          return [];
-        });
-        pasteCountRef.current = 0;
-        return;
+        e.preventDefault(); copySelected(); return;
       }
 
       /* ── Paste ── */
@@ -427,43 +471,17 @@ function FactoryCanvasInner({
 
       /* ── Duplicate ── */
       if (cmd && e.key === "d") {
-        e.preventDefault();
-        rfNodes.filter((n) => n.selected).forEach((n) => {
-          if (n.type === "factoryZone") {
-            const sn   = storeNodes.find((s) => s.id === n.id);
-            const zone = sn ? zones.find((z) => z.id === sn.zoneId) : null;
-            if (!zone || !sn) return;
-            addZone(
-              { name: zone.name, type: zone.type, description: zone.description, capacity: zone.capacity },
-              { x: Math.round((n.position.x + 20) / 20) * 20, y: Math.round((n.position.y + 20) / 20) * 20 },
-              { width: sn.width, height: sn.height },
-            );
-          } else if (n.type === "factoryWall") {
-            const wall = walls.find((w) => w.id === n.id);
-            if (!wall) return;
-            addWall({
-              wallType: wall.wallType, orientation: wall.orientation,
-              position: { x: Math.round((wall.position.x + 20) / 20) * 20, y: Math.round((wall.position.y + 20) / 20) * 20 },
-              length: wall.length, thickness: wall.thickness,
-            });
-          }
-        });
-        return;
+        e.preventDefault(); duplicateSelected(); return;
       }
 
       /* ── Delete selected nodes (explicit — don't rely on RF canvas focus) ── */
       if (e.key === "Backspace" || e.key === "Delete") {
-        rfNodes.filter((n) => n.selected).forEach((n) => deleteNodeById(n.id));
-        return;
+        deleteSelected(); return;
       }
 
       /* ── Flip orientation of selected wall/walkway nodes (⌘F) ── */
       if (cmd && (e.key === "f" || e.key === "F")) {
-        e.preventDefault();
-        rfNodes
-          .filter((n) => n.selected && n.type === "factoryWall")
-          .forEach((n) => flipWallOrientation(n.id));
-        return;
+        e.preventDefault(); flipSelected(); return;
       }
 
       /* ── Single-key tool shortcuts (no modifier) ── */
@@ -485,8 +503,8 @@ function FactoryCanvasInner({
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
   }, [
-    rfNodes, storeNodes, zones, walls, addZone, addWall, fitView, zoomIn, zoomOut,
-    setRfNodes, doPaste, deleteNodeById, flipWallOrientation, undo,
+    fitView, zoomIn, zoomOut, setRfNodes, doPaste, undo,
+    copySelected, duplicateSelected, deleteSelected, flipSelected,
     onToolModeChange, onAddZoneTypeChange, onOpenAddZoneDialog,
     onWallOrientationToggle, onToggleFullscreen,
   ]);
@@ -521,11 +539,14 @@ function FactoryCanvasInner({
     (e: React.MouseEvent, node: Node) => {
       e.preventDefault();
       const raw = screenToFlowPosition({ x: e.clientX, y: e.clientY });
-      /* Sync both the Zustand store selection AND RF's internal selected state so
-         keyboard shortcuts (⌘C, ⌘D, ⌫) that filter rfNodes.filter(n => n.selected)
-         work correctly after a right-click. */
-      setSelectedNode(node.id);
-      setRfNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === node.id })));
+      /* If the right-clicked node is already part of a multi-selection, preserve
+         the whole selection so context menu actions act on the group.
+         If it's NOT selected yet, switch to single selection on this node. */
+      const alreadySelected = rfNodes.find((n) => n.id === node.id)?.selected ?? false;
+      if (!alreadySelected) {
+        setSelectedNode(node.id);
+        setRfNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === node.id })));
+      }
       setCtxMenu({
         screenX: e.clientX, screenY: e.clientY,
         kind: node.type === "factoryWall" ? "wall" : "zone",
@@ -533,7 +554,7 @@ function FactoryCanvasInner({
         flowX: Math.round(raw.x / 20) * 20, flowY: Math.round(raw.y / 20) * 20,
       });
     },
-    [screenToFlowPosition, setSelectedNode, setRfNodes]
+    [screenToFlowPosition, setSelectedNode, setRfNodes, rfNodes]
   );
 
   /* Right-click on canvas */
@@ -598,6 +619,13 @@ function FactoryCanvasInner({
     const close  = () => closeCtx();
     const hasCb  = clipboardRef.current.length > 0;
 
+    /* How many nodes are in the current selection? */
+    const selCount = rfNodes.filter((n) => n.selected).length;
+    const multi    = selCount > 1;
+    const selBadge = multi
+      ? <span style={{ marginLeft: "auto", fontSize: 9, fontFamily: "monospace", fontWeight: 700, color: t.textDim, background: t.canvasBg, borderRadius: 4, padding: "1px 5px" }}>{selCount} selected</span>
+      : null;
+
     /* Zone right-click */
     if (ctxMenu.kind === "zone") {
       const sn   = storeNodes.find((n) => n.id === ctxMenu.nodeId);
@@ -605,7 +633,6 @@ function FactoryCanvasInner({
       const colors = zone ? ZONE_COLORS[zone.type] : null;
       return (
         <>
-          {/* Header */}
           {zone && (
             <div style={{
               display: "flex", alignItems: "center", gap: 7,
@@ -614,24 +641,16 @@ function FactoryCanvasInner({
               backgroundColor: colors!.bg,
             }}>
               <span style={{ color: colors!.text, display: "flex" }}>{ZONE_ICON[zone.type]}</span>
-              <span style={{ fontSize: 11, fontWeight: 700, color: colors!.text }}>
-                {zone.name}
-              </span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: colors!.text }}>{zone.name}</span>
+              {selBadge}
             </div>
           )}
           <div style={{ padding: "4px 0" }}>
-            <CtxItem label="Copy"      shortcut="⌘C" t={t} onClick={() => {
-              if (!sn || !zone) return;
-              clipboardRef.current = [{ kind: "zone", zone, pos: sn.position, width: sn.width, height: sn.height }];
-              pasteCountRef.current = 0; close();
-            }} />
-            <CtxItem label="Duplicate" shortcut="⌘D" t={t} onClick={() => {
-              if (ctxMenu.nodeId) duplicateNodeById(ctxMenu.nodeId); close();
-            }} />
+            <CtxItem label={multi ? `Copy ${selCount}` : "Copy"}      shortcut="⌘C" t={t} onClick={() => { copySelected(); close(); }} />
+            <CtxItem label="Paste"                                     shortcut="⌘V" disabled={!hasCb} t={t} onClick={() => { if (!hasCb) return; pasteCountRef.current++; doPaste(pasteCountRef.current * 20); close(); }} />
+            <CtxItem label={multi ? `Duplicate ${selCount}` : "Duplicate"} shortcut="⌘D" t={t} onClick={() => { duplicateSelected(); close(); }} />
             <CtxSep t={t} />
-            <CtxItem label="Delete" shortcut="⌫" destructive t={t} onClick={() => {
-              if (ctxMenu.nodeId) deleteNodeById(ctxMenu.nodeId); close();
-            }} />
+            <CtxItem label={multi ? `Delete ${selCount}` : "Delete"} shortcut="⌫" destructive t={t} onClick={() => { deleteSelected(); close(); }} />
           </div>
         </>
       );
@@ -651,40 +670,20 @@ function FactoryCanvasInner({
               borderBottom: `1px solid ${accentColor}33`,
               backgroundColor: isWall ? "rgba(104,104,104,0.08)" : "rgba(58,120,176,0.08)",
             }}>
-              {isWall
-                ? <Minus size={12} color={accentColor} />
-                : <Footprints size={12} color={accentColor} />
-              }
-              <span style={{ fontSize: 11, fontWeight: 700, color: accentColor }}>
-                {WALL_CONFIG[wall.wallType].label}
-              </span>
-              <span style={{ fontSize: 10, color: accentColor + "88", fontFamily: "monospace", marginLeft: 2 }}>
-                {wall.orientation === "horizontal" ? "↔" : "↕"}
-              </span>
+              {isWall ? <Minus size={12} color={accentColor} /> : <Footprints size={12} color={accentColor} />}
+              <span style={{ fontSize: 11, fontWeight: 700, color: accentColor }}>{WALL_CONFIG[wall.wallType].label}</span>
+              <span style={{ fontSize: 10, color: accentColor + "88", fontFamily: "monospace" }}>{wall.orientation === "horizontal" ? "↔" : "↕"}</span>
+              {selBadge}
             </div>
           )}
           <div style={{ padding: "4px 0" }}>
-            <CtxItem label="Copy" shortcut="⌘C" t={t} onClick={() => {
-              if (!wall) return;
-              clipboardRef.current = [{ kind: "wall", wall: { wallType: wall.wallType, orientation: wall.orientation, position: wall.position, length: wall.length, thickness: wall.thickness }, pos: wall.position }];
-              pasteCountRef.current = 0; close();
-            }} />
-            <CtxItem label="Paste" shortcut="⌘V" disabled={!hasCb} t={t} onClick={() => {
-              if (!hasCb) return;
-              pasteCountRef.current++;
-              doPaste(pasteCountRef.current * 20); close();
-            }} />
+            <CtxItem label={multi ? `Copy ${selCount}` : "Copy"}           shortcut="⌘C" t={t} onClick={() => { copySelected(); close(); }} />
+            <CtxItem label="Paste"                                          shortcut="⌘V" disabled={!hasCb} t={t} onClick={() => { if (!hasCb) return; pasteCountRef.current++; doPaste(pasteCountRef.current * 20); close(); }} />
             <CtxSep t={t} />
-            <CtxItem label="Flip Orientation" shortcut="⌘F" t={t} onClick={() => {
-              if (ctxMenu.nodeId) flipWallOrientation(ctxMenu.nodeId); close();
-            }} />
-            <CtxItem label="Duplicate" shortcut="⌘D" t={t} onClick={() => {
-              if (ctxMenu.nodeId) duplicateNodeById(ctxMenu.nodeId); close();
-            }} />
+            <CtxItem label="Flip Orientation"                               shortcut="⌘F" t={t} onClick={() => { flipSelected(); close(); }} />
+            <CtxItem label={multi ? `Duplicate ${selCount}` : "Duplicate"} shortcut="⌘D" t={t} onClick={() => { duplicateSelected(); close(); }} />
             <CtxSep t={t} />
-            <CtxItem label="Delete" shortcut="⌫" destructive t={t} onClick={() => {
-              if (ctxMenu.nodeId) deleteNodeById(ctxMenu.nodeId); close();
-            }} />
+            <CtxItem label={multi ? `Delete ${selCount}` : "Delete"} shortcut="⌫" destructive t={t} onClick={() => { deleteSelected(); close(); }} />
           </div>
         </>
       );
