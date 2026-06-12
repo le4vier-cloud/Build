@@ -11,7 +11,7 @@ const SUB_NAV = [
 
 export default function ToolsPage() {
   const [view, setView] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", serial_number: "", station_ids: [] as string[] });
+  const [form, setForm] = useState({ name: "", serial_number: "" });
   const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
 
   return (
@@ -27,16 +27,6 @@ export default function ToolsPage() {
 
           <Field label="Name*" value={form.name} onChange={(v) => set("name", v)} />
           <Field label="Serial Number*" value={form.serial_number} onChange={(v) => set("serial_number", v)} />
-
-          <div style={s.field}>
-            <label style={s.label}>Stations*</label>
-            <div style={s.row}>
-              <select style={s.select}>
-                <option value="">Choose From Stations</option>
-              </select>
-              <PlusBtn />
-            </div>
-          </div>
 
           <div style={{ marginTop: 8 }}>
             <button style={s.saveBtn}>Save</button>
@@ -58,18 +48,6 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
       <input value={value} placeholder="Type here..."
         onChange={(e) => onChange(e.target.value)} style={s.input} />
     </div>
-  );
-}
-
-function PlusBtn() {
-  return (
-    <button style={{
-      width: 32, height: 32, border: "1px solid var(--input-border)", borderRadius: "var(--radius-sm)",
-      display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
-      background: "var(--surface)", flexShrink: 0,
-    }}>
-      <Plus size={14} strokeWidth={2} color="var(--text-secondary)" />
-    </button>
   );
 }
 

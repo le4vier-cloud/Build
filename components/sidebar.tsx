@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Users, LayoutGrid, ShoppingBag, Scissors,
+  Users, ShoppingBag, Scissors,
   Warehouse, ArrowUpCircle, Link2, Archive,
   Workflow, UserCircle, CalendarDays,
   Home, Settings, LogOut, User, Building2,
@@ -12,7 +12,6 @@ import {
 const NAV_ITEMS = [
   { href: "/factory",    icon: Building2,      label: "Factory" },
   { href: "/staff",      icon: Users,          label: "Staff" },
-  { href: "/stations",   icon: LayoutGrid,     label: "Stations" },
   { href: "/products",   icon: ShoppingBag,    label: "Products" },
   { href: "/tools",      icon: Scissors,       label: "Tools" },
   { href: "/suppliers",  icon: Warehouse,      label: "Suppliers" },
