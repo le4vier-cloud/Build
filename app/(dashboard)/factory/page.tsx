@@ -457,6 +457,15 @@ function FactoryCanvasInner({
         return;
       }
 
+      /* ── Flip orientation of selected wall/walkway nodes (⌘F) ── */
+      if (cmd && (e.key === "f" || e.key === "F")) {
+        e.preventDefault();
+        rfNodes
+          .filter((n) => n.selected && n.type === "factoryWall")
+          .forEach((n) => flipWallOrientation(n.id));
+        return;
+      }
+
       /* ── Single-key tool shortcuts (no modifier) ── */
       if (!cmd) {
         if (e.key === "v" || e.key === "V" || e.key === "Escape") {
@@ -477,7 +486,7 @@ function FactoryCanvasInner({
     return () => document.removeEventListener("keydown", onKey, true);
   }, [
     rfNodes, storeNodes, zones, walls, addZone, addWall, fitView, zoomIn, zoomOut,
-    setRfNodes, doPaste, deleteNodeById, undo,
+    setRfNodes, doPaste, deleteNodeById, flipWallOrientation, undo,
     onToolModeChange, onAddZoneTypeChange, onOpenAddZoneDialog,
     onWallOrientationToggle, onToggleFullscreen,
   ]);
@@ -662,7 +671,7 @@ function FactoryCanvasInner({
               doPaste(pasteCountRef.current * 20); close();
             }} />
             <CtxSep t={t} />
-            <CtxItem label="Flip Orientation" shortcut="O" t={t} onClick={() => {
+            <CtxItem label="Flip Orientation" shortcut="⌘F" t={t} onClick={() => {
               if (ctxMenu.nodeId) flipWallOrientation(ctxMenu.nodeId); close();
             }} />
             <CtxItem label="Duplicate" shortcut="⌘D" t={t} onClick={() => {
@@ -1204,6 +1213,7 @@ function ShortcutsDropdown({ t }: { t: Theme }) {
       { desc: "Undo",          keys: ["⌘", "Z"] }, { desc: "Copy",      keys: ["⌘", "C"] },
       { desc: "Paste",         keys: ["⌘", "V"] }, { desc: "Duplicate", keys: ["⌘", "D"] },
       { desc: "Select All",    keys: ["⌘", "A"] }, { desc: "Delete",    keys: ["⌫"] },
+      { desc: "Flip H/V",      keys: ["⌘", "F"] },
     ]},
     { title: "View", rows: [
       { desc: "Fullscreen",    keys: ["F"] },
