@@ -9,6 +9,7 @@ import {
   Controls,
   MiniMap,
   Panel,
+  SelectionMode,
   useNodesState,
   useEdgesState,
   useReactFlow,
@@ -219,12 +220,9 @@ function FactoryCanvasInner({
   } = useFactoryStore();
 
   /* ── Clipboard ─────────────────────────────────── */
-  type ClipEntry = {
-    zone:   FactoryZone;
-    pos:    { x: number; y: number };
-    width:  number;
-    height: number;
-  };
+  type ClipEntry =
+    | { kind: "zone"; zone: FactoryZone; pos: { x: number; y: number }; width: number; height: number }
+    | { kind: "wall"; wall: Omit<FactoryWall, "id">; pos: { x: number; y: number } };
   const clipboardRef  = useRef<ClipEntry[]>([]);
   const pasteCountRef = useRef(0);
 
@@ -339,14 +337,21 @@ function FactoryCanvasInner({
   }, [walls, updateWall]);
 
   const doPaste = useCallback((off: number) => {
-    clipboardRef.current.forEach(({ zone, pos, width, height }) => {
-      addZone(
-        { name: zone.name, type: zone.type, description: zone.description, capacity: zone.capacity },
-        { x: Math.round((pos.x + off) / 20) * 20, y: Math.round((pos.y + off) / 20) * 20 },
-        { width, height },
-      );
+    clipboardRef.current.forEach((entry) => {
+      const px = Math.round((entry.pos.x + off) / 20) * 20;
+      const py = Math.round((entry.pos.y + off) / 20) * 20;
+      if (entry.kind === "zone") {
+        const { zone, width, height } = entry;
+        addZone(
+          { name: zone.name, type: zone.type, description: zone.description, capacity: zone.capacity },
+          { x: px, y: py },
+          { width, height },
+        );
+      } else {
+        addWall({ ...entry.wall, position: { x: px, y: py } });
+      }
     });
-  }, [addZone]);
+  }, [addZone, addWall]);
 
   /* ══════════════════════════════════════════════════════════════════
      Single consolidated keyboard handler — registered in capture phase
@@ -391,13 +396,21 @@ function FactoryCanvasInner({
       /* ── Copy ── */
       if (cmd && e.key === "c") {
         e.preventDefault();
-        const sel = rfNodes.filter((n) => n.selected && n.type === "factoryZone");
+        const sel = rfNodes.filter((n) => n.selected);
         if (!sel.length) return;
-        clipboardRef.current = sel.flatMap((n) => {
-          const sn   = storeNodes.find((s) => s.id === n.id);
-          const zone = sn ? zones.find((z) => z.id === sn.zoneId) : null;
-          if (!zone || !sn) return [];
-          return [{ zone, pos: { x: n.position.x, y: n.position.y }, width: sn.width, height: sn.height }];
+        clipboardRef.current = sel.flatMap((n): ClipEntry[] => {
+          if (n.type === "factoryZone") {
+            const sn   = storeNodes.find((s) => s.id === n.id);
+            const zone = sn ? zones.find((z) => z.id === sn.zoneId) : null;
+            if (!zone || !sn) return [];
+            return [{ kind: "zone", zone, pos: { x: n.position.x, y: n.position.y }, width: sn.width, height: sn.height }];
+          }
+          if (n.type === "factoryWall") {
+            const wall = walls.find((w) => w.id === n.id);
+            if (!wall) return [];
+            return [{ kind: "wall", wall: { wallType: wall.wallType, orientation: wall.orientation, position: wall.position, length: wall.length, thickness: wall.thickness }, pos: wall.position }];
+          }
+          return [];
         });
         pasteCountRef.current = 0;
         return;
@@ -415,15 +428,25 @@ function FactoryCanvasInner({
       /* ── Duplicate ── */
       if (cmd && e.key === "d") {
         e.preventDefault();
-        rfNodes.filter((n) => n.selected && n.type === "factoryZone").forEach((n) => {
-          const sn   = storeNodes.find((s) => s.id === n.id);
-          const zone = sn ? zones.find((z) => z.id === sn.zoneId) : null;
-          if (!zone || !sn) return;
-          addZone(
-            { name: zone.name, type: zone.type, description: zone.description, capacity: zone.capacity },
-            { x: Math.round((n.position.x + 20) / 20) * 20, y: Math.round((n.position.y + 20) / 20) * 20 },
-            { width: sn.width, height: sn.height },
-          );
+        rfNodes.filter((n) => n.selected).forEach((n) => {
+          if (n.type === "factoryZone") {
+            const sn   = storeNodes.find((s) => s.id === n.id);
+            const zone = sn ? zones.find((z) => z.id === sn.zoneId) : null;
+            if (!zone || !sn) return;
+            addZone(
+              { name: zone.name, type: zone.type, description: zone.description, capacity: zone.capacity },
+              { x: Math.round((n.position.x + 20) / 20) * 20, y: Math.round((n.position.y + 20) / 20) * 20 },
+              { width: sn.width, height: sn.height },
+            );
+          } else if (n.type === "factoryWall") {
+            const wall = walls.find((w) => w.id === n.id);
+            if (!wall) return;
+            addWall({
+              wallType: wall.wallType, orientation: wall.orientation,
+              position: { x: Math.round((wall.position.x + 20) / 20) * 20, y: Math.round((wall.position.y + 20) / 20) * 20 },
+              length: wall.length, thickness: wall.thickness,
+            });
+          }
         });
         return;
       }
@@ -453,7 +476,7 @@ function FactoryCanvasInner({
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
   }, [
-    rfNodes, storeNodes, zones, addZone, fitView, zoomIn, zoomOut,
+    rfNodes, storeNodes, zones, walls, addZone, addWall, fitView, zoomIn, zoomOut,
     setRfNodes, doPaste, deleteNodeById, undo,
     onToolModeChange, onAddZoneTypeChange, onOpenAddZoneDialog,
     onWallOrientationToggle, onToggleFullscreen,
@@ -586,7 +609,7 @@ function FactoryCanvasInner({
           <div style={{ padding: "4px 0" }}>
             <CtxItem label="Copy"      shortcut="⌘C" t={t} onClick={() => {
               if (!sn || !zone) return;
-              clipboardRef.current = [{ zone, pos: sn.position, width: sn.width, height: sn.height }];
+              clipboardRef.current = [{ kind: "zone", zone, pos: sn.position, width: sn.width, height: sn.height }];
               pasteCountRef.current = 0; close();
             }} />
             <CtxItem label="Duplicate" shortcut="⌘D" t={t} onClick={() => {
@@ -628,6 +651,17 @@ function FactoryCanvasInner({
             </div>
           )}
           <div style={{ padding: "4px 0" }}>
+            <CtxItem label="Copy" shortcut="⌘C" t={t} onClick={() => {
+              if (!wall) return;
+              clipboardRef.current = [{ kind: "wall", wall: { wallType: wall.wallType, orientation: wall.orientation, position: wall.position, length: wall.length, thickness: wall.thickness }, pos: wall.position }];
+              pasteCountRef.current = 0; close();
+            }} />
+            <CtxItem label="Paste" shortcut="⌘V" disabled={!hasCb} t={t} onClick={() => {
+              if (!hasCb) return;
+              pasteCountRef.current++;
+              doPaste(pasteCountRef.current * 20); close();
+            }} />
+            <CtxSep t={t} />
             <CtxItem label="Flip Orientation" shortcut="O" t={t} onClick={() => {
               if (ctxMenu.nodeId) flipWallOrientation(ctxMenu.nodeId); close();
             }} />
@@ -707,6 +741,7 @@ function FactoryCanvasInner({
         onNodeClick={onNodeClick} onPaneClick={onPaneClick}
         onNodeContextMenu={onNodeContextMenu} onPaneContextMenu={onPaneContextMenu}
         snapGrid={[20, 20]} snapToGrid fitView
+        selectionMode={SelectionMode.Partial}
         autoPanOnNodeDrag autoPanOnConnect autoPanSpeed={20}
         minZoom={0} maxZoom={4}
         proOptions={{ hideAttribution: true }}
