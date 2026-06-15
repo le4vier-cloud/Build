@@ -1,16 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import {
   Users, Plus, Timer, CalendarDays,
   CreditCard, Fingerprint, ScanFace, KeyRound, QrCode, Wifi, Scan,
   LogIn, LogOut, Coffee, RotateCcw, Info,
   ChevronDown, ChevronUp, X,
+  Pencil, Trash2, SlidersHorizontal,
 } from "lucide-react";
 import { ModuleLayout } from "@/components/ui/module-layout";
 import type {
   HardwareAuthType, HardwareCredential, ClockEvent, Shift, StaffMember,
-  ClockEventType, ShiftStatus,
+  ClockEventType, ShiftStatus, StaffRole,
 } from "@/types/index";
 
 /* ── Auth method config ────────────────────────────────────────────── */
@@ -116,6 +117,43 @@ function initials(name: string) {
 function shiftDuration(start: string, end: string) {
   const mins = Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000);
   return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+
+/* ── Role constants ───────────────────────────────────────────────── */
+const ROLE_COLORS = [
+  "#7B6CF6", "#4A90E2", "#3CC86A", "#F5C542",
+  "#E55F1F", "#20B2AA", "#E84393", "#A0A0B8",
+];
+
+const MOCK_ROLES: StaffRole[] = [
+  { id: "r1", org_id: "org1", name: "General Manager",
+    color: "#7B6CF6", created_at: "2026-01-01T00:00:00Z" },
+  { id: "r2", org_id: "org1", name: "Operations Manager",
+    description: "Oversees day-to-day production operations",
+    parent_role_id: "r1", color: "#4A90E2", created_at: "2026-01-01T00:00:00Z" },
+  { id: "r3", org_id: "org1", name: "Production Supervisor",
+    description: "Supervises floor activities and output targets",
+    parent_role_id: "r2", color: "#3CC86A", created_at: "2026-01-01T00:00:00Z" },
+  { id: "r4", org_id: "org1", name: "Machine Operator",
+    parent_role_id: "r3", color: "#F5C542", created_at: "2026-01-01T00:00:00Z" },
+  { id: "r5", org_id: "org1", name: "Assembly Technician",
+    parent_role_id: "r3", color: "#F5C542", created_at: "2026-01-01T00:00:00Z" },
+  { id: "r6", org_id: "org1", name: "QC Inspector",
+    description: "Quality control and sign-off",
+    parent_role_id: "r3", color: "#E55F1F", created_at: "2026-01-01T00:00:00Z" },
+  { id: "r7", org_id: "org1", name: "Admin Manager",
+    description: "Administrative and HR functions",
+    parent_role_id: "r1", color: "#4A90E2", created_at: "2026-01-01T00:00:00Z" },
+];
+
+/** Returns true if `candidateId` is a descendant of `ancestorId` in the role tree. */
+function isDescendant(candidateId: string, ancestorId: string, roles: StaffRole[]): boolean {
+  let cur = roles.find((r) => r.id === candidateId);
+  while (cur?.parent_role_id) {
+    if (cur.parent_role_id === ancestorId) return true;
+    cur = roles.find((r) => r.id === cur!.parent_role_id);
+  }
+  return false;
 }
 
 /* ── Shared mini-components ───────────────────────────────────────── */
@@ -294,9 +332,288 @@ function CredentialEnrollment({
   );
 }
 
+/* ── Roles Modal ──────────────────────────────────────────────────── */
+function RolesModal({ onClose }: { onClose: () => void }) {
+  const [roles, setRoles]           = useState<StaffRole[]>(MOCK_ROLES);
+  const [editingId, setEditingId]   = useState<string | null>(null);
+  const [showForm, setShowForm]     = useState(false);
+  const [confirmDel, setConfirmDel] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    name: "", description: "", parent_role_id: "", color: ROLE_COLORS[1],
+  });
+
+  function openAdd() {
+    setEditingId(null);
+    setForm({ name: "", description: "", parent_role_id: "", color: ROLE_COLORS[1] });
+    setShowForm(true);
+  }
+
+  function openEdit(role: StaffRole) {
+    setEditingId(role.id);
+    setForm({
+      name: role.name,
+      description: role.description ?? "",
+      parent_role_id: role.parent_role_id ?? "",
+      color: role.color ?? ROLE_COLORS[1],
+    });
+    setShowForm(true);
+  }
+
+  function closeForm() { setShowForm(false); setEditingId(null); }
+
+  function save() {
+    if (!form.name.trim()) return;
+    if (editingId) {
+      setRoles((rs) => rs.map((r) => r.id !== editingId ? r : {
+        ...r,
+        name:           form.name.trim(),
+        description:    form.description.trim() || undefined,
+        parent_role_id: form.parent_role_id || undefined,
+        color:          form.color,
+      }));
+    } else {
+      setRoles((rs) => [...rs, {
+        id: `r${Date.now()}`, org_id: "org1",
+        name:           form.name.trim(),
+        description:    form.description.trim() || undefined,
+        parent_role_id: form.parent_role_id || undefined,
+        color:          form.color,
+        created_at:     new Date().toISOString(),
+      }]);
+    }
+    closeForm();
+  }
+
+  function remove(id: string) {
+    const hasKids = roles.some((r) => r.parent_role_id === id);
+    if (hasKids && confirmDel !== id) { setConfirmDel(id); return; }
+    // Orphan children up to deleted role's parent
+    const parentId = roles.find((r) => r.id === id)?.parent_role_id;
+    setRoles((rs) =>
+      rs.filter((r) => r.id !== id)
+        .map((r) => r.parent_role_id === id ? { ...r, parent_role_id: parentId } : r)
+    );
+    setConfirmDel(null);
+  }
+
+  function getChildren(pid: string | undefined) {
+    return roles.filter((r) => r.parent_role_id === pid);
+  }
+
+  function renderTree(pid: string | undefined, depth: number): React.ReactNode {
+    return getChildren(pid).map((role) => {
+      const staffCount = MOCK_STAFF.filter((s) => s.staff_role_ids.includes(role.id)).length;
+      const hasKids    = roles.some((r) => r.parent_role_id === role.id);
+      return (
+        <Fragment key={role.id}>
+          <div style={{
+            display: "flex", alignItems: "center", gap: 10,
+            padding: `10px 16px 10px ${16 + depth * 22}px`,
+            borderBottom: "1px solid var(--border)",
+            backgroundColor: editingId === role.id ? "var(--surface)" : undefined,
+          }}>
+            {/* Color dot */}
+            <div style={{
+              width: 9, height: 9, borderRadius: "50%", flexShrink: 0,
+              backgroundColor: role.color ?? "#A0A0B8",
+            }} />
+
+            {/* Name + description */}
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>
+                {role.name}
+              </div>
+              {role.description && (
+                <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 1 }}>
+                  {role.description}
+                </div>
+              )}
+            </div>
+
+            {/* Staff count */}
+            {staffCount > 0 && (
+              <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
+                {staffCount} staff
+              </span>
+            )}
+
+            {/* Delete confirm */}
+            {confirmDel === role.id ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 11, color: "#E55F1F" }}>
+                  {hasKids ? "Has sub-roles. " : ""}Delete?
+                </span>
+                <button onClick={() => remove(role.id)} style={mb.danger}>Yes</button>
+                <button onClick={() => setConfirmDel(null)} style={mb.sm}>No</button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", gap: 4 }}>
+                <button onClick={() => openEdit(role)} style={mb.icon} title="Edit role">
+                  <Pencil size={13} />
+                </button>
+                <button onClick={() => remove(role.id)} style={{ ...mb.icon, color: "#E55F1F88" }} title="Delete role">
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Children */}
+          {renderTree(role.id, depth + 1)}
+        </Fragment>
+      );
+    });
+  }
+
+  // When editing, exclude the role itself and its descendants from the parent options
+  const parentOptions = editingId
+    ? roles.filter((r) => r.id !== editingId && !isDescendant(r.id, editingId, roles))
+    : roles;
+
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 100,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        backgroundColor: "rgba(0,0,0,0.55)",
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{
+        width: 560, maxHeight: "82vh",
+        backgroundColor: "var(--bg)", borderRadius: 14,
+        border: "1px solid var(--border)",
+        display: "flex", flexDirection: "column",
+        overflow: "hidden",
+        boxShadow: "0 32px 80px rgba(0,0,0,0.45)",
+      }}>
+        {/* Header */}
+        <div style={{
+          display: "flex", alignItems: "flex-start",
+          padding: "18px 20px", borderBottom: "1px solid var(--border)",
+        }}>
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>
+              Staff Roles
+            </h2>
+            <p style={{ fontSize: 12, color: "var(--text-tertiary)", margin: "3px 0 0" }}>
+              Define your management hierarchy — roles cascade downward
+            </p>
+          </div>
+          <div style={{ flex: 1 }} />
+          {!showForm && (
+            <button
+              onClick={openAdd}
+              style={{ ...mb.primary, display: "flex", alignItems: "center", gap: 6, marginRight: 10 }}
+            >
+              <Plus size={13} /> Add Role
+            </button>
+          )}
+          <button onClick={onClose} style={mb.icon}><X size={16} /></button>
+        </div>
+
+        {/* Scrollable body */}
+        <div style={{ overflowY: "auto", flex: 1 }}>
+          {/* Tree */}
+          {roles.filter((r) => !r.parent_role_id).length === 0 && !showForm ? (
+            <p style={{ padding: "32px 20px", color: "var(--text-tertiary)", fontSize: 14, textAlign: "center" }}>
+              No roles defined yet.
+            </p>
+          ) : (
+            renderTree(undefined, 0)
+          )}
+
+          {/* Add / Edit form */}
+          {showForm && (
+            <div style={{
+              padding: 20, borderTop: "1px solid var(--border)",
+              backgroundColor: "var(--surface)",
+              display: "flex", flexDirection: "column", gap: 14,
+            }}>
+              <h4 style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>
+                {editingId ? "Edit Role" : "New Role"}
+              </h4>
+
+              <div style={mf.group}>
+                <label style={mf.label}>Role Name *</label>
+                <input
+                  autoFocus
+                  value={form.name}
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="e.g. Production Supervisor"
+                  style={mf.input}
+                />
+              </div>
+
+              <div style={mf.group}>
+                <label style={mf.label}>
+                  Description{" "}
+                  <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>(optional)</span>
+                </label>
+                <input
+                  value={form.description}
+                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                  placeholder="Responsibilities of this role"
+                  style={mf.input}
+                />
+              </div>
+
+              <div style={mf.group}>
+                <label style={mf.label}>Reports to</label>
+                <select
+                  value={form.parent_role_id}
+                  onChange={(e) => setForm((f) => ({ ...f, parent_role_id: e.target.value }))}
+                  style={mf.select}
+                >
+                  <option value="">— Top level (no parent) —</option>
+                  {parentOptions.map((r) => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={mf.group}>
+                <label style={mf.label}>Colour</label>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {ROLE_COLORS.map((c) => (
+                    <button
+                      key={c} type="button"
+                      onClick={() => setForm((f) => ({ ...f, color: c }))}
+                      style={{
+                        width: 22, height: 22, borderRadius: "50%",
+                        backgroundColor: c, border: "none", cursor: "pointer",
+                        boxShadow: form.color === c
+                          ? `0 0 0 2px var(--bg), 0 0 0 4px ${c}`
+                          : "none",
+                        transition: "box-shadow 0.1s",
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <button onClick={closeForm} style={mb.ghost}>Cancel</button>
+                <button
+                  onClick={save}
+                  disabled={!form.name.trim()}
+                  style={{ ...mb.primary, opacity: form.name.trim() ? 1 : 0.4 }}
+                >
+                  {editingId ? "Save Changes" : "Add Role"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Staff List ───────────────────────────────────────────────────── */
 function StaffList({ onAddStaff }: { onAddStaff: () => void }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showRoles, setShowRoles]   = useState(false);
   const credsByStaff = (sid: string) => MOCK_CREDS.filter((c) => c.staff_id === sid);
 
   return (
@@ -305,9 +622,17 @@ function StaffList({ onAddStaff }: { onAddStaff: () => void }) {
         <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
           {MOCK_STAFF.length} staff members
         </span>
-        <button onClick={onAddStaff} style={{ ...btn.primary, display: "flex", alignItems: "center", gap: 6 }}>
-          <Plus size={14} /> Add Staff
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={() => setShowRoles(true)}
+            style={{ ...btn.ghost, display: "flex", alignItems: "center", gap: 6 }}
+          >
+            <SlidersHorizontal size={14} /> Manage Roles
+          </button>
+          <button onClick={onAddStaff} style={{ ...btn.primary, display: "flex", alignItems: "center", gap: 6 }}>
+            <Plus size={14} /> Add Staff
+          </button>
+        </div>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -428,6 +753,8 @@ function StaffList({ onAddStaff }: { onAddStaff: () => void }) {
           );
         })}
       </div>
+
+      {showRoles && <RolesModal onClose={() => setShowRoles(false)} />}
     </div>
   );
 }
@@ -791,5 +1118,51 @@ const btn: Record<string, React.CSSProperties> = {
     width: 26, height: 26, display: "inline-flex", alignItems: "center", justifyContent: "center",
     backgroundColor: "transparent", border: "none", borderRadius: 6,
     color: "var(--text-tertiary)", cursor: "pointer",
+  },
+};
+
+/* Modal button styles */
+const mb: Record<string, React.CSSProperties> = {
+  primary: {
+    height: 32, padding: "0 16px",
+    backgroundColor: "var(--btn-primary)", color: "var(--btn-primary-text)",
+    border: "none", borderRadius: "var(--radius-full, 9999px)",
+    fontSize: 13, fontWeight: 600, cursor: "pointer",
+  },
+  ghost: {
+    height: 32, padding: "0 14px", backgroundColor: "transparent",
+    color: "var(--text-secondary)", border: "1px solid var(--border)",
+    borderRadius: "var(--radius-full, 9999px)", fontSize: 13, fontWeight: 500, cursor: "pointer",
+  },
+  danger: {
+    height: 24, padding: "0 10px", fontSize: 11, fontWeight: 600,
+    backgroundColor: "#E55F1F22", color: "#E55F1F",
+    border: "1px solid #E55F1F44", borderRadius: "var(--radius-full, 9999px)", cursor: "pointer",
+  },
+  sm: {
+    height: 24, padding: "0 10px", fontSize: 11, fontWeight: 500,
+    backgroundColor: "transparent", color: "var(--text-secondary)",
+    border: "1px solid var(--border)", borderRadius: "var(--radius-full, 9999px)", cursor: "pointer",
+  },
+  icon: {
+    width: 26, height: 26, display: "inline-flex", alignItems: "center", justifyContent: "center",
+    backgroundColor: "transparent", border: "none", borderRadius: 6,
+    color: "var(--text-tertiary)", cursor: "pointer",
+  },
+};
+
+/* Modal field styles */
+const mf: Record<string, React.CSSProperties> = {
+  group:  { display: "flex", flexDirection: "column", gap: 6 },
+  label:  { fontSize: 13, fontWeight: 500, color: "var(--text-primary)" },
+  input: {
+    height: 36, border: "1px solid var(--input-border)", borderRadius: "var(--radius-sm)",
+    padding: "0 12px", fontSize: 14, color: "var(--text-primary)",
+    backgroundColor: "var(--bg)", outline: "none", width: "100%", boxSizing: "border-box",
+  },
+  select: {
+    height: 36, border: "1px solid var(--input-border)", borderRadius: "var(--radius-sm)",
+    padding: "0 12px", fontSize: 14, color: "var(--text-primary)",
+    backgroundColor: "var(--bg)", outline: "none", width: "100%",
   },
 };

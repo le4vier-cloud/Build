@@ -7,7 +7,16 @@ export interface Organization {
 }
 
 // ── Staff ─────────────────────────────────────────────────────────
-export interface StaffRole { id: string; org_id: string; name: string; }
+export interface StaffRole {
+  id: string;
+  org_id: string;
+  name: string;
+  description?: string;
+  /** Parent role in the hierarchy — undefined means top level. */
+  parent_role_id?: string;
+  color?: string;
+  created_at: string;
+}
 
 export interface StaffMember {
   id: string;
