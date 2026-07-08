@@ -11,14 +11,11 @@ import {
 
 const NAV_ITEMS = [
   { href: "/processes",  icon: Workflow,       label: "Processes" },
-  { href: "/factory",    icon: Building2,      label: "Factory" },
   { href: "/staff",      icon: Users,          label: "Staff" },
   { href: "/products",   icon: ShoppingBag,    label: "Products" },
   { href: "/tools",      icon: Scissors,       label: "Tools" },
   { href: "/suppliers",  icon: Warehouse,      label: "Suppliers" },
-  { href: "/parts-os",   icon: ArrowUpCircle,  label: "Parts (OS)" },
-  { href: "/parts-im",   icon: Link2,          label: "Parts (IM)" },
-  { href: "/inventory",  icon: Archive,        label: "Inventory" },
+  { href: "/inventory",  icon: Archive,        label: "Parts" },
   { href: "/clients",    icon: UserCircle,     label: "Clients" },
   { href: "/orders",     icon: CalendarDays,   label: "Orders" },
 ];
