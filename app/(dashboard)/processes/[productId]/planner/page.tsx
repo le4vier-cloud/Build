@@ -204,7 +204,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   solidBtn: {
     display: "flex", alignItems: "center", gap: 6, padding: "0 14px", height: 34,
-    backgroundColor: "var(--btn-primary)", color: "#fff", border: "none",
+    backgroundColor: "var(--btn-primary)", color: "var(--btn-primary-text)", border: "none",
     borderRadius: "var(--radius-sm)", cursor: "pointer", fontSize: 13, fontWeight: 600,
   },
   metricsStrip: {
