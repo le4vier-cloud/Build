@@ -125,6 +125,7 @@ function SlidePanel({ panel, parts, onClose, onSave }: {
   const [addingPart,  setAddingPart]  = useState(false);
   const [newPartName, setNewPartName] = useState("");
   const [newPartType, setNewPartType] = useState<"OS" | "IM">("OS");
+  const [partFilter,  setPartFilter]  = useState<"all" | "OS" | "IM">("all");
   const [sopDrag,     setSopDrag]     = useState<number | null>(null);
   const [machDrag,    setMachDrag]    = useState<number | null>(null);
 
@@ -146,7 +147,7 @@ function SlidePanel({ panel, parts, onClose, onSave }: {
       setNumPeople("1"); setSopFiles([]); setMachFiles([]); setMaterials([]);
     }
     setPartQuery(""); setShowDrop(false); setAddingPart(false);
-    setSelMach(null);
+    setPartFilter("all"); setSelMach(null);
   }, [panel]);
 
   const isOpen     = panel !== null;
@@ -160,12 +161,11 @@ function SlidePanel({ panel, parts, onClose, onSave }: {
     : panel?.mode === "new-task"     ? "New Task"
     : panel?.mode === "edit-task"    ? "Edit Task" : "";
 
-  const filteredParts = partQuery.trim()
-    ? parts.filter(p =>
-        p.name.toLowerCase().includes(partQuery.toLowerCase()) &&
-        !materials.some(m => m.partId === p.id)
-      )
-    : [];
+  const filteredParts = parts.filter(p =>
+    (partQuery.trim() ? p.name.toLowerCase().includes(partQuery.toLowerCase()) : true) &&
+    !materials.some(m => m.partId === p.id) &&
+    (partFilter === "all" || p.type === partFilter)
+  );
 
   const addMaterial = (p: PartRes) => {
     setMaterials(m => [...m, { id: `mat-${Date.now()}`, partId: p.id, name: p.name, partType: p.type, qty: 1 }]);
@@ -367,8 +367,9 @@ function SlidePanel({ panel, parts, onClose, onSave }: {
                 <Package size={13} color="var(--text-secondary)" />
                 <span style={sp.sectionTitle}>Parts & Materials</span>
               </div>
-              {/* Search */}
+              {/* Search + filter */}
               <div style={{ position: "relative" }}>
+                {/* Input row */}
                 <div style={{ position: "relative" }}>
                   <Search size={13} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--text-tertiary)" }} />
                   <input style={{ ...sp.input, paddingLeft: 30 }}
@@ -379,35 +380,78 @@ function SlidePanel({ panel, parts, onClose, onSave }: {
                     onBlur={() => setTimeout(() => setShowDrop(false), 150)}
                   />
                 </div>
-                {showDrop && (partQuery.trim() || addingPart) && (
-                  <div style={sp.dropdown}>
-                    {filteredParts.map(p => (
-                      <button key={p.id} type="button" onMouseDown={() => addMaterial(p)} style={sp.dropItem}>
-                        <span style={{ ...sp.typePill, backgroundColor: p.type === "OS" ? "rgba(59,130,246,0.12)" : "rgba(147,51,234,0.12)", color: p.type === "OS" ? "#3B82F6" : "#9333EA" }}>
-                          {p.type}
-                        </span>
-                        {p.name}
+
+                {/* IM / OS filter slider — visible while dropdown is open */}
+                {showDrop && (
+                  <div style={{ display: "flex", gap: 3, marginTop: 6 }}>
+                    {(["all", "OS", "IM"] as const).map(f => (
+                      <button key={f} type="button"
+                        onMouseDown={e => { e.preventDefault(); setPartFilter(f); }}
+                        style={{
+                          flex: 1, height: 26, borderRadius: 6, cursor: "pointer",
+                          fontSize: 11, fontWeight: 600, transition: "all 0.12s",
+                          border: `1.5px solid ${f === "OS" && partFilter === f ? "#3B82F6" : f === "IM" && partFilter === f ? "#9333EA" : "var(--border)"}`,
+                          backgroundColor: f === "OS" && partFilter === f ? "rgba(59,130,246,0.12)" : f === "IM" && partFilter === f ? "rgba(147,51,234,0.12)" : partFilter === f ? "var(--surface)" : "transparent",
+                          color: f === "OS" && partFilter === f ? "#3B82F6" : f === "IM" && partFilter === f ? "#9333EA" : partFilter === f ? "var(--text-primary)" : "var(--text-tertiary)",
+                        }}>
+                        {f === "all" ? "All" : f}
                       </button>
                     ))}
-                    {filteredParts.length === 0 && partQuery.trim() && !addingPart && (
-                      <p style={{ fontSize: 12, color: "var(--text-tertiary)", padding: "8px 12px" }}>No parts found</p>
-                    )}
-                    <button type="button" onMouseDown={() => setAddingPart(true)} style={{ ...sp.dropItem, color: "var(--accent)", fontWeight: 600 }}>
-                      <Plus size={12} /> Add new part to library
-                    </button>
+                  </div>
+                )}
+
+                {/* Results dropdown */}
+                {showDrop && (
+                  <div style={sp.dropdown}>
+                    {filteredParts.length > 0
+                      ? filteredParts.map(p => (
+                          <button key={p.id} type="button" onMouseDown={() => addMaterial(p)} style={sp.dropItem}>
+                            <span style={{ ...sp.typePill, backgroundColor: p.type === "OS" ? "rgba(59,130,246,0.12)" : "rgba(147,51,234,0.12)", color: p.type === "OS" ? "#3B82F6" : "#9333EA" }}>
+                              {p.type}
+                            </span>
+                            {p.name}
+                          </button>
+                        ))
+                      : (
+                          <p style={{ fontSize: 12, color: "var(--text-tertiary)", padding: "8px 12px" }}>
+                            {partQuery.trim() ? "No parts found" : `No ${partFilter !== "all" ? partFilter + " " : ""}parts in library yet`}
+                          </p>
+                        )
+                    }
+                    <div style={{ borderTop: "1px solid var(--border)", marginTop: 2 }}>
+                      <button type="button"
+                        onMouseDown={() => {
+                          setNewPartType(partFilter === "all" ? "OS" : partFilter);
+                          setAddingPart(true);
+                        }}
+                        style={{ ...sp.dropItem, color: "var(--accent)", fontWeight: 600 }}>
+                        <Plus size={12} /> Add new {partFilter !== "all" ? partFilter + " " : ""}part to library
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
+
               {/* New part inline form */}
               {addingPart && (
                 <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6, padding: "10px 12px", backgroundColor: "rgba(245,99,0,0.06)", borderRadius: 8, border: "1px solid rgba(245,99,0,0.2)" }}>
                   <input value={newPartName} onChange={e => setNewPartName(e.target.value)}
-                    placeholder="Part name…"
+                    placeholder="Part name…" autoFocus
                     style={{ ...sp.input, flex: 1, height: 32, fontSize: 13 }} />
-                  <button type="button" onClick={() => setNewPartType(t => t === "OS" ? "IM" : "OS")}
-                    style={{ ...sp.typeSmall, backgroundColor: newPartType === "OS" ? "rgba(59,130,246,0.12)" : "rgba(147,51,234,0.12)", color: newPartType === "OS" ? "#3B82F6" : "#9333EA", borderColor: newPartType === "OS" ? "#3B82F6" : "#9333EA" }}>
-                    {newPartType}
-                  </button>
+                  {/* type toggle — locked if filter is set, toggleable if "all" */}
+                  {partFilter === "all"
+                    ? (
+                        <button type="button" onClick={() => setNewPartType(t => t === "OS" ? "IM" : "OS")}
+                          style={{ ...sp.typeSmall, backgroundColor: newPartType === "OS" ? "rgba(59,130,246,0.12)" : "rgba(147,51,234,0.12)", color: newPartType === "OS" ? "#3B82F6" : "#9333EA", borderColor: newPartType === "OS" ? "#3B82F6" : "#9333EA" }}>
+                          {newPartType}
+                        </button>
+                      )
+                    : (
+                        <span style={{ ...sp.typeSmall, backgroundColor: newPartType === "OS" ? "rgba(59,130,246,0.12)" : "rgba(147,51,234,0.12)", color: newPartType === "OS" ? "#3B82F6" : "#9333EA", borderColor: newPartType === "OS" ? "#3B82F6" : "#9333EA", cursor: "default" }}>
+                          {newPartType}
+                        </span>
+                      )
+                  }
                   <button type="button" onClick={handleNewPart}
                     style={{ ...sp.typeSmall, backgroundColor: "var(--btn-primary)", color: "var(--btn-primary-text)", borderColor: "var(--btn-primary)" }}>
                     Add
