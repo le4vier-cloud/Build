@@ -84,7 +84,17 @@ interface SOPFile    { id: string; name: string; }
 interface MachFile   { id: string; name: string; machType: MachType; }
 interface TaskMat    { id: string; partId: string; name: string; partType: "OS" | "IM"; qty: number; }
 interface TaskMeta   { numPeople: number; sopFiles: SOPFile[]; machFiles: MachFile[]; materials: TaskMat[]; }
-const blankMeta = (): TaskMeta => ({ numPeople: 1, sopFiles: [], machFiles: [], materials: [] });
+const blankMeta    = (): TaskMeta => ({ numPeople: 1, sopFiles: [], machFiles: [], materials: [] });
+
+function blankNewPart() {
+  return {
+    name: "", supplier: "", barcode: "", serial: "",
+    qtyStock: "", minThreshold: "", costPrice: "", salePrice: "",
+    lowStockAlert: true, assemblyName: "", assemblyDesc: "",
+    maxMinutes: "", labourCostPerHour: "",
+    osComponents: [] as { id: string; partOsId: string; qty: string }[],
+  };
+}
 
 type PanelState =
   | { mode: "new-workflow" }
@@ -123,8 +133,9 @@ function SlidePanel({ panel, parts, onClose, onSave }: {
   const [partQuery,   setPartQuery]   = useState("");
   const [showDrop,    setShowDrop]    = useState(false);
   const [addingPart,  setAddingPart]  = useState(false);
-  const [newPartName, setNewPartName] = useState("");
+  const [newPart,     setNewPart]     = useState(blankNewPart);
   const [newPartType, setNewPartType] = useState<"OS" | "IM">("OS");
+  const setNP = (u: Partial<ReturnType<typeof blankNewPart>>) => setNewPart(f => ({ ...f, ...u }));
   const [partFilter,  setPartFilter]  = useState<"all" | "OS" | "IM">("all");
   const [sopDrag,     setSopDrag]     = useState<number | null>(null);
   const [machDrag,    setMachDrag]    = useState<number | null>(null);
@@ -147,7 +158,7 @@ function SlidePanel({ panel, parts, onClose, onSave }: {
       setNumPeople("1"); setSopFiles([]); setMachFiles([]); setMaterials([]);
     }
     setPartQuery(""); setShowDrop(false); setAddingPart(false);
-    setPartFilter("all"); setSelMach(null);
+    setNewPart(blankNewPart()); setPartFilter("all"); setSelMach(null);
   }, [panel]);
 
   const isOpen     = panel !== null;
@@ -173,13 +184,14 @@ function SlidePanel({ panel, parts, onClose, onSave }: {
   };
 
   const handleNewPart = () => {
-    if (!newPartName.trim()) return;
-    const newId = `part-${Date.now()}`;
+    if (!newPart.name.trim()) return;
+    const newId    = `part-${Date.now()}`;
+    const unitCost = parseFloat(newPartType === "OS" ? newPart.costPrice : newPart.labourCostPerHour) || 0;
     useManufacturingStore.setState(s => ({
-      partResources: [...s.partResources, { id: newId, name: newPartName.trim(), unitCost: 0, type: newPartType }],
+      partResources: [...s.partResources, { id: newId, name: newPart.name.trim(), unitCost, type: newPartType }],
     }));
-    setMaterials(m => [...m, { id: `mat-${Date.now()}`, partId: newId, name: newPartName.trim(), partType: newPartType, qty: 1 }]);
-    setNewPartName(""); setAddingPart(false); setPartQuery(""); setShowDrop(false);
+    setMaterials(m => [...m, { id: `mat-${Date.now()}`, partId: newId, name: newPart.name.trim(), partType: newPartType, qty: 1 }]);
+    setNewPart(blankNewPart()); setAddingPart(false); setPartQuery(""); setShowDrop(false);
   };
 
   const handleSOPFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -432,31 +444,127 @@ function SlidePanel({ panel, parts, onClose, onSave }: {
                 )}
               </div>
 
-              {/* New part inline form */}
+              {/* New part full form */}
               {addingPart && (
-                <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6, padding: "10px 12px", backgroundColor: "rgba(245,99,0,0.06)", borderRadius: 8, border: "1px solid rgba(245,99,0,0.2)" }}>
-                  <input value={newPartName} onChange={e => setNewPartName(e.target.value)}
-                    placeholder="Part name…" autoFocus
-                    style={{ ...sp.input, flex: 1, height: 32, fontSize: 13 }} />
-                  {/* type toggle — locked if filter is set, toggleable if "all" */}
-                  {partFilter === "all"
-                    ? (
-                        <button type="button" onClick={() => setNewPartType(t => t === "OS" ? "IM" : "OS")}
-                          style={{ ...sp.typeSmall, backgroundColor: newPartType === "OS" ? "rgba(59,130,246,0.12)" : "rgba(147,51,234,0.12)", color: newPartType === "OS" ? "#3B82F6" : "#9333EA", borderColor: newPartType === "OS" ? "#3B82F6" : "#9333EA" }}>
-                          {newPartType}
+                <div style={{
+                  display: "flex", flexDirection: "column", gap: 8, marginTop: 8, padding: 14,
+                  backgroundColor: "var(--surface)", borderRadius: 10,
+                  border: `1px solid ${newPartType === "OS" ? "rgba(59,130,246,0.35)" : "rgba(147,51,234,0.35)"}`,
+                }}>
+                  {/* Header row */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                    <span style={{ flex: 1, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: newPartType === "OS" ? "#3B82F6" : "#9333EA" }}>
+                      New {newPartType} Part
+                    </span>
+                    {partFilter === "all" && (
+                      <button type="button" onClick={() => setNewPartType(t => t === "OS" ? "IM" : "OS")}
+                        style={{ ...sp.typeSmall, height: 22, padding: "0 8px", fontSize: 10,
+                          backgroundColor: newPartType === "OS" ? "rgba(59,130,246,0.1)" : "rgba(147,51,234,0.1)",
+                          color: newPartType === "OS" ? "#3B82F6" : "#9333EA",
+                          borderColor: newPartType === "OS" ? "#3B82F6" : "#9333EA" }}>
+                        Switch to {newPartType === "OS" ? "IM" : "OS"}
+                      </button>
+                    )}
+                    <button type="button" onClick={() => setAddingPart(false)} style={sp.iconBtn}><X size={12} /></button>
+                  </div>
+
+                  {/* ── OS fields ── */}
+                  {newPartType === "OS" && <>
+                    <input autoFocus placeholder="Name *" value={newPart.name}
+                      onChange={e => setNP({ name: e.target.value })} style={{ ...sp.input, height: 34 }} />
+                    <input placeholder="Supplier" value={newPart.supplier}
+                      onChange={e => setNP({ supplier: e.target.value })} style={{ ...sp.input, height: 34 }} />
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                      <input placeholder="Barcode" value={newPart.barcode}
+                        onChange={e => setNP({ barcode: e.target.value })} style={{ ...sp.input, height: 34 }} />
+                      <input placeholder="Serial No." value={newPart.serial}
+                        onChange={e => setNP({ serial: e.target.value })} style={{ ...sp.input, height: 34 }} />
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                      <input type="number" placeholder="Qty in stock *" value={newPart.qtyStock}
+                        onChange={e => setNP({ qtyStock: e.target.value })} style={{ ...sp.input, height: 34 }} />
+                      <input type="number" placeholder="Min. threshold" value={newPart.minThreshold}
+                        onChange={e => setNP({ minThreshold: e.target.value })} style={{ ...sp.input, height: 34 }} />
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                      <input type="number" placeholder="Cost price (R) *" value={newPart.costPrice}
+                        onChange={e => setNP({ costPrice: e.target.value })} style={{ ...sp.input, height: 34 }} />
+                      <input type="number" placeholder="Sale price (R)" value={newPart.salePrice}
+                        onChange={e => setNP({ salePrice: e.target.value })} style={{ ...sp.input, height: 34 }} />
+                    </div>
+                  </>}
+
+                  {/* ── IM fields ── */}
+                  {newPartType === "IM" && <>
+                    <input autoFocus placeholder="Name *" value={newPart.name}
+                      onChange={e => setNP({ name: e.target.value })} style={{ ...sp.input, height: 34 }} />
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                      <input placeholder="Serial No." value={newPart.serial}
+                        onChange={e => setNP({ serial: e.target.value })} style={{ ...sp.input, height: 34 }} />
+                      <input type="number" placeholder="Qty in stock *" value={newPart.qtyStock}
+                        onChange={e => setNP({ qtyStock: e.target.value })} style={{ ...sp.input, height: 34 }} />
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                      <input type="number" placeholder="Min. threshold" value={newPart.minThreshold}
+                        onChange={e => setNP({ minThreshold: e.target.value })} style={{ ...sp.input, height: 34 }} />
+                      {/* Low stock alert toggle inline */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, padding: "0 10px", border: "1px solid var(--input-border)", borderRadius: 8, height: 34 }}>
+                        <span style={{ fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>Low stock alert</span>
+                        <button type="button" onClick={() => setNP({ lowStockAlert: !newPart.lowStockAlert })}
+                          style={{ width: 34, height: 18, borderRadius: 9, border: "none", cursor: "pointer", position: "relative", flexShrink: 0, transition: "background-color 0.2s", backgroundColor: newPart.lowStockAlert ? "#DC2626" : "var(--border)" }}>
+                          <span style={{ position: "absolute", top: 2, width: 14, height: 14, borderRadius: "50%", backgroundColor: "#fff", transition: "transform 0.2s", transform: newPart.lowStockAlert ? "translateX(18px)" : "translateX(2px)" }} />
                         </button>
-                      )
-                    : (
-                        <span style={{ ...sp.typeSmall, backgroundColor: newPartType === "OS" ? "rgba(59,130,246,0.12)" : "rgba(147,51,234,0.12)", color: newPartType === "OS" ? "#3B82F6" : "#9333EA", borderColor: newPartType === "OS" ? "#3B82F6" : "#9333EA", cursor: "default" }}>
-                          {newPartType}
-                        </span>
-                      )
-                  }
+                      </div>
+                    </div>
+                    <input placeholder="Assembly task name *" value={newPart.assemblyName}
+                      onChange={e => setNP({ assemblyName: e.target.value })} style={{ ...sp.input, height: 34 }} />
+                    <textarea placeholder="Assembly description…" value={newPart.assemblyDesc}
+                      onChange={e => setNP({ assemblyDesc: e.target.value })} rows={2}
+                      style={{ border: "1px solid var(--input-border)", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "var(--text-primary)", backgroundColor: "var(--surface)", resize: "none", fontFamily: "inherit", outline: "none" }} />
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                      <input type="number" placeholder="Max time (min)" value={newPart.maxMinutes}
+                        onChange={e => setNP({ maxMinutes: e.target.value })} style={{ ...sp.input, height: 34 }} />
+                      <input type="number" placeholder="Labour (R/hr)" value={newPart.labourCostPerHour}
+                        onChange={e => setNP({ labourCostPerHour: e.target.value })} style={{ ...sp.input, height: 34 }} />
+                    </div>
+                    {/* OS sub-components */}
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>OS Stock Items</span>
+                        <button type="button"
+                          onClick={() => setNP({ osComponents: [...newPart.osComponents, { id: `osc-${Date.now()}`, partOsId: "", qty: "1" }] })}
+                          style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, background: "none", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 8px", cursor: "pointer", color: "var(--text-secondary)" }}>
+                          <Plus size={10} strokeWidth={2} /> Add
+                        </button>
+                      </div>
+                      {newPart.osComponents.length === 0
+                        ? <p style={{ fontSize: 11, color: "var(--text-tertiary)", fontStyle: "italic" }}>No OS components yet</p>
+                        : newPart.osComponents.map((c, i) => (
+                            <div key={c.id} style={{ display: "flex", gap: 5, marginBottom: 4, alignItems: "center" }}>
+                              <select value={c.partOsId}
+                                onChange={e => setNP({ osComponents: newPart.osComponents.map((x, xi) => xi === i ? { ...x, partOsId: e.target.value } : x) })}
+                                style={{ ...sp.input, flex: 1, height: 32, fontSize: 12 }}>
+                                <option value="">Choose OS part…</option>
+                                {parts.filter(p => p.type === "OS").map(p => (
+                                  <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                              </select>
+                              <input type="number" placeholder="Qty" value={c.qty}
+                                onChange={e => setNP({ osComponents: newPart.osComponents.map((x, xi) => xi === i ? { ...x, qty: e.target.value } : x) })}
+                                style={{ ...sp.input, width: 60, height: 32 }} />
+                              <button type="button"
+                                onClick={() => setNP({ osComponents: newPart.osComponents.filter((_, xi) => xi !== i) })}
+                                style={sp.fileRemove}><X size={11} /></button>
+                            </div>
+                          ))
+                      }
+                    </div>
+                  </>}
+
                   <button type="button" onClick={handleNewPart}
-                    style={{ ...sp.typeSmall, backgroundColor: "var(--btn-primary)", color: "var(--btn-primary-text)", borderColor: "var(--btn-primary)" }}>
-                    Add
+                    style={{ ...sp.primaryBtn, height: 36, fontSize: 13, marginTop: 4 }}>
+                    Add {newPartType} part to library & task
                   </button>
-                  <button type="button" onClick={() => setAddingPart(false)} style={sp.iconBtn}><X size={12} /></button>
                 </div>
               )}
               {/* Selected materials */}
