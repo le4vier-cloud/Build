@@ -171,7 +171,7 @@ export function ResourceLibrary() {
                 <div style={{ flex: 1 }}>
                   <p style={s.cardTitle}>{p.name}</p>
                   <p style={s.cardMeta}>
-                    <span style={{ ...s.typePill, backgroundColor: p.type === "OS" ? "#EFF6FF" : "#F5F3FF", color: p.type === "OS" ? "#3B82F6" : "#9333EA" }}>
+                    <span style={{ ...s.typePill, backgroundColor: p.type === "OS" ? "rgba(59,130,246,0.12)" : "rgba(147,51,234,0.12)", color: p.type === "OS" ? "#3B82F6" : "#9333EA" }}>
                       {p.type}
                     </span>
                     {fmt(p.unitCost)}/unit

@@ -133,15 +133,15 @@ export default function TasksPage({ params }: { params: Promise<{ productId: str
         {/* Summary pills */}
         <div style={{ display: "flex", gap: 8 }}>
           <div style={s.pill}>
-            <Clock size={11} color="#8E8E93" />
+            <Clock size={11} color="var(--text-secondary)" />
             <span>{fmtMin(totalTaskTime)} total</span>
           </div>
           <div style={s.pill}>
-            <Workflow size={11} color="#8E8E93" />
+            <Workflow size={11} color="var(--text-secondary)" />
             <span>{workflows.length} workflows</span>
           </div>
           <div style={s.pill}>
-            <Clock size={11} color="#8E8E93" />
+            <Clock size={11} color="var(--text-secondary)" />
             <span>{tasks.length} tasks</span>
           </div>
         </div>
@@ -221,7 +221,7 @@ export default function TasksPage({ params }: { params: Promise<{ productId: str
             {/* Tasks table */}
             {tasks.length === 0 ? (
               <div style={s.emptyState}>
-                <Clock size={32} color="#D1D1D6" strokeWidth={1.5} />
+                <Clock size={32} color="var(--border)" strokeWidth={1.5} />
                 <p style={s.emptyTitle}>No tasks yet</p>
                 <p style={s.emptySub}>Create your first task to start planning production</p>
               </div>
@@ -241,17 +241,17 @@ export default function TasksPage({ params }: { params: Promise<{ productId: str
                   const wf = workflows.find((w) => w.taskIds.includes(task.id));
                   return (
                     <div key={task.id} style={s.tableRow}>
-                      <span style={{ flex: 3, fontSize: 13, fontWeight: 500, color: "#1D1D1F" }}>
+                      <span style={{ flex: 3, fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>
                         {task.name}
                       </span>
-                      <div style={{ width: 90, display: "flex", alignItems: "center", justifyContent: "center", gap: 4, color: "#6E6E73", fontSize: 12 }}>
-                        <Clock size={11} color="#AEAEB2" />
+                      <div style={{ width: 90, display: "flex", alignItems: "center", justifyContent: "center", gap: 4, color: "var(--text-secondary)", fontSize: 12 }}>
+                        <Clock size={11} color="var(--text-tertiary)" />
                         {fmtMin(task.duration)}
                       </div>
                       <div style={{ width: 90, display: "flex", justifyContent: "center" }}>
                         <span style={{
                           fontSize: 10, fontWeight: 700, borderRadius: 4, padding: "3px 8px",
-                          backgroundColor: task.optionSet === "machine" ? "#EFF6FF" : "#F0FAF3",
+                          backgroundColor: task.optionSet === "machine" ? "rgba(37,99,235,0.12)" : "rgba(5,150,105,0.12)",
                           color: task.optionSet === "machine" ? "#2563EB" : "#059669",
                         }}>
                           {task.optionSet === "machine" ? (
@@ -271,7 +271,7 @@ export default function TasksPage({ params }: { params: Promise<{ productId: str
                             {wf.name}
                           </span>
                         ) : (
-                          <span style={{ fontSize: 11, color: "#AEAEB2" }}>—</span>
+                          <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>—</span>
                         )}
                       </div>
                       <button style={s.rowRemoveBtn} onClick={() => removeTask(task.id)}>
@@ -320,7 +320,7 @@ export default function TasksPage({ params }: { params: Promise<{ productId: str
             {/* Workflow cards */}
             {workflows.length === 0 ? (
               <div style={s.emptyState}>
-                <Workflow size={32} color="#D1D1D6" strokeWidth={1.5} />
+                <Workflow size={32} color="var(--border)" strokeWidth={1.5} />
                 <p style={s.emptyTitle}>No workflows yet</p>
                 <p style={s.emptySub}>Create a workflow to group tasks for reuse on stations</p>
               </div>
@@ -357,11 +357,11 @@ export default function TasksPage({ params }: { params: Promise<{ productId: str
                       {/* Add task picker */}
                       {isAdding && (
                         <div style={s.addTaskPicker}>
-                          <p style={{ fontSize: 11, color: "#8E8E93", fontWeight: 600, marginBottom: 6 }}>
+                          <p style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 600, marginBottom: 6 }}>
                             SELECT TASK TO ADD
                           </p>
                           {unassignedTasks.length === 0 ? (
-                            <p style={{ fontSize: 12, color: "#AEAEB2" }}>
+                            <p style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
                               All tasks are already assigned to a workflow. Create new tasks in the Tasks tab.
                             </p>
                           ) : (
@@ -376,7 +376,7 @@ export default function TasksPage({ params }: { params: Promise<{ productId: str
                                   style={s.taskPickChip}
                                 >
                                   {t.name}
-                                  <span style={{ color: "#8E8E93", fontSize: 10 }}>
+                                  <span style={{ color: "var(--text-tertiary)", fontSize: 10 }}>
                                     {fmtMin(t.duration)}
                                   </span>
                                 </button>
@@ -390,24 +390,24 @@ export default function TasksPage({ params }: { params: Promise<{ productId: str
                       {isOpen && (
                         <div style={s.wfTaskList}>
                           {wfTasks.length === 0 && (
-                            <p style={{ fontSize: 12, color: "#AEAEB2", padding: "4px 0" }}>
+                            <p style={{ fontSize: 12, color: "var(--text-tertiary)", padding: "4px 0" }}>
                               No tasks yet — click "+ Add task" to add some.
                             </p>
                           )}
                           {wfTasks.map((t, idx) => (
                             <div key={t.id} style={s.wfTaskRow}>
                               <span style={s.wfTaskIdx}>{idx + 1}</span>
-                              <span style={{ flex: 1, fontSize: 13, color: "#1D1D1F", fontWeight: 500 }}>
+                              <span style={{ flex: 1, fontSize: 13, color: "var(--text-primary)", fontWeight: 500 }}>
                                 {t.name}
                               </span>
                               <span style={{
                                 fontSize: 9, fontWeight: 700, borderRadius: 4, padding: "2px 6px",
-                                backgroundColor: t.optionSet === "machine" ? "#EFF6FF" : "#F0FAF3",
+                                backgroundColor: t.optionSet === "machine" ? "rgba(37,99,235,0.12)" : "rgba(5,150,105,0.12)",
                                 color: t.optionSet === "machine" ? "#2563EB" : "#059669",
                               }}>
                                 {t.optionSet}
                               </span>
-                              <span style={{ fontSize: 11, color: "#8E8E93", width: 48, textAlign: "right" }}>
+                              <span style={{ fontSize: 11, color: "var(--text-tertiary)", width: 48, textAlign: "right" }}>
                                 {fmtMin(t.duration)}
                               </span>
                               <button
@@ -442,29 +442,29 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex", alignItems: "center", gap: 6,
     color: "var(--accent)", textDecoration: "none", fontSize: 13, fontWeight: 500,
   },
-  title: { fontSize: 20, fontWeight: 700, color: "#1D1D1F", letterSpacing: "-0.02em" },
+  title: { fontSize: 20, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.02em" },
   pill: {
     display: "flex", alignItems: "center", gap: 5,
-    padding: "4px 10px", backgroundColor: "#F5F5F7",
-    border: "1px solid #E5E5EA", borderRadius: 999,
-    fontSize: 12, color: "#6E6E73", fontWeight: 500,
+    padding: "4px 10px", backgroundColor: "var(--bg)",
+    border: "1px solid var(--border)", borderRadius: 999,
+    fontSize: 12, color: "var(--text-secondary)", fontWeight: 500,
   },
   tabBar: {
-    display: "flex", gap: 2, borderBottom: "1px solid #E5E5EA",
+    display: "flex", gap: 2, borderBottom: "1px solid var(--border)",
     padding: "0 0 0 0", marginBottom: 0, flexShrink: 0,
   },
   tabBtn: {
     display: "flex", alignItems: "center", gap: 6,
     padding: "10px 16px", fontSize: 13, fontWeight: 500,
-    color: "#6E6E73", background: "none", border: "none",
+    color: "var(--text-secondary)", background: "none", border: "none",
     borderBottom: "2px solid transparent", cursor: "pointer",
     marginBottom: -1,
   },
   tabActive: {
-    color: "#1D1D1F", borderBottomColor: "#F56300", fontWeight: 600,
+    color: "var(--text-primary)", borderBottomColor: "#F56300", fontWeight: 600,
   },
   countBadge: {
-    backgroundColor: "#F5F5F7", color: "#6E6E73",
+    backgroundColor: "var(--bg)", color: "var(--text-secondary)",
     borderRadius: 4, padding: "1px 6px", fontSize: 11, fontWeight: 700,
   },
   content: {
@@ -473,8 +473,8 @@ const s: Record<string, React.CSSProperties> = {
   sectionHeader: {
     display: "flex", justifyContent: "space-between", alignItems: "flex-start",
   },
-  sectionTitle: { fontSize: 16, fontWeight: 700, color: "#1D1D1F" },
-  sectionSub: { fontSize: 12, color: "#8E8E93", marginTop: 3, maxWidth: 480 },
+  sectionTitle: { fontSize: 16, fontWeight: 700, color: "var(--text-primary)" },
+  sectionSub: { fontSize: 12, color: "var(--text-secondary)", marginTop: 3, maxWidth: 480 },
   addBtn: {
     display: "flex", alignItems: "center", gap: 6,
     padding: "0 16px", height: 34,
@@ -486,67 +486,67 @@ const s: Record<string, React.CSSProperties> = {
   inlineForm: {
     display: "flex", alignItems: "center", gap: 8,
     padding: "12px 16px",
-    backgroundColor: "#FFF0E6",
-    border: "1px solid #F5C49A",
+    backgroundColor: "rgba(245,99,0,0.08)",
+    border: "1px solid rgba(245,99,0,0.3)",
     borderRadius: 10,
   },
   input: {
-    height: 34, border: "1px solid #D1D1D6", borderRadius: 8,
-    padding: "0 10px", fontSize: 13, color: "#1D1D1F",
-    backgroundColor: "#FFFFFF", outline: "none",
+    height: 34, border: "1px solid var(--input-border)", borderRadius: 8,
+    padding: "0 10px", fontSize: 13, color: "var(--text-primary)",
+    backgroundColor: "var(--bg)", outline: "none",
   },
   typeToggle: { display: "flex", gap: 2 },
   typeBtn: {
     display: "flex", alignItems: "center", gap: 4,
     padding: "0 10px", height: 34,
-    backgroundColor: "#FFFFFF", border: "1px solid #D1D1D6",
-    borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 500, color: "#6E6E73",
+    backgroundColor: "var(--bg)", border: "1px solid var(--input-border)",
+    borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 500, color: "var(--text-secondary)",
   },
   typeBtnActive: { backgroundColor: "#F0FAF3", borderColor: "#059669", color: "#059669" },
   typeBtnActiveMachine: { backgroundColor: "#EFF6FF", borderColor: "#2563EB", color: "#2563EB" },
   submitBtn: {
     height: 34, padding: "0 16px",
-    backgroundColor: "#1D1D1F", color: "#fff",
+    backgroundColor: "var(--btn-primary)", color: "#fff",
     border: "none", borderRadius: 8,
     fontSize: 13, fontWeight: 600, cursor: "pointer",
   },
   cancelBtn: {
     height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center",
-    backgroundColor: "#fff", border: "1px solid #D1D1D6",
-    borderRadius: 8, cursor: "pointer", color: "#6E6E73",
+    backgroundColor: "var(--bg)", border: "1px solid var(--input-border)",
+    borderRadius: 8, cursor: "pointer", color: "var(--text-secondary)",
   },
   table: { display: "flex", flexDirection: "column", gap: 0 },
   tableHead: {
     display: "flex", alignItems: "center",
     padding: "8px 12px",
-    fontSize: 11, fontWeight: 700, color: "#AEAEB2",
+    fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)",
     textTransform: "uppercase", letterSpacing: "0.06em",
-    backgroundColor: "#F5F5F7", borderRadius: "8px 8px 0 0",
-    border: "1px solid #E5E5EA",
+    backgroundColor: "var(--bg)", borderRadius: "8px 8px 0 0",
+    border: "1px solid var(--border)",
   },
   tableRow: {
     display: "flex", alignItems: "center",
     padding: "10px 12px",
-    borderBottom: "1px solid #F5F5F7",
-    border: "1px solid #E5E5EA",
+    borderBottom: "1px solid var(--border)",
+    border: "1px solid var(--border)",
     borderTop: "none",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "var(--bg)",
   },
   emptyState: {
     display: "flex", flexDirection: "column", alignItems: "center",
-    gap: 10, padding: "48px 0", color: "#AEAEB2", textAlign: "center",
+    gap: 10, padding: "48px 0", color: "var(--text-tertiary)", textAlign: "center",
   },
-  emptyTitle: { fontSize: 15, fontWeight: 600, color: "#8E8E93" },
-  emptySub: { fontSize: 13, color: "#AEAEB2", maxWidth: 320 },
+  emptyTitle: { fontSize: 15, fontWeight: 600, color: "var(--text-secondary)" },
+  emptySub: { fontSize: 13, color: "var(--text-tertiary)", maxWidth: 320 },
   rowRemoveBtn: {
     background: "none", border: "none", cursor: "pointer",
-    display: "flex", color: "#AEAEB2", padding: 4, borderRadius: 4,
+    display: "flex", color: "var(--text-tertiary)", padding: 4, borderRadius: 4,
     flexShrink: 0,
   },
   /* Workflow card styles */
   wfCard: {
-    backgroundColor: "#FFFFFF",
-    border: "1px solid #E5E5EA",
+    backgroundColor: "var(--bg)",
+    border: "1px solid var(--border)",
     borderRadius: 12,
     overflow: "hidden",
   },
@@ -556,43 +556,43 @@ const s: Record<string, React.CSSProperties> = {
   },
   chevronBtn: {
     background: "none", border: "none", cursor: "pointer",
-    display: "flex", color: "#8E8E93", padding: 0,
+    display: "flex", color: "var(--text-secondary)", padding: 0,
   },
-  wfName: { fontSize: 14, fontWeight: 700, color: "#1D1D1F" },
-  wfMeta: { fontSize: 12, color: "#8E8E93" },
+  wfName: { fontSize: 14, fontWeight: 700, color: "var(--text-primary)" },
+  wfMeta: { fontSize: 12, color: "var(--text-secondary)" },
   wfAddTaskBtn: {
     display: "flex", alignItems: "center", gap: 5,
     padding: "4px 10px", height: 28,
-    backgroundColor: "#F5F5F7", border: "1px solid #E5E5EA",
-    borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 500, color: "#6E6E73",
+    backgroundColor: "var(--bg)", border: "1px solid var(--border)",
+    borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 500, color: "var(--text-secondary)",
   },
   wfTaskList: {
     padding: "0 16px 12px",
     display: "flex", flexDirection: "column", gap: 0,
-    borderTop: "1px solid #F5F5F7",
+    borderTop: "1px solid var(--border)",
   },
   wfTaskRow: {
     display: "flex", alignItems: "center", gap: 10,
     padding: "8px 0",
-    borderBottom: "1px solid #F5F5F7",
+    borderBottom: "1px solid var(--border)",
   },
   wfTaskIdx: {
     width: 20, height: 20, borderRadius: "50%",
-    backgroundColor: "#F5F5F7", color: "#6E6E73",
+    backgroundColor: "var(--bg)", color: "var(--text-secondary)",
     fontSize: 10, fontWeight: 700,
     display: "flex", alignItems: "center", justifyContent: "center",
     flexShrink: 0,
   },
   addTaskPicker: {
     padding: "12px 16px",
-    borderTop: "1px solid #F5F5F7",
-    backgroundColor: "#FAFAFA",
+    borderTop: "1px solid var(--border)",
+    backgroundColor: "var(--surface)",
   },
   taskPickChip: {
     display: "flex", alignItems: "center", gap: 6,
     padding: "5px 12px",
-    backgroundColor: "#FFFFFF", border: "1px solid #E5E5EA",
+    backgroundColor: "var(--bg)", border: "1px solid var(--border)",
     borderRadius: 999, cursor: "pointer", fontSize: 12,
-    fontWeight: 500, color: "#1D1D1F",
+    fontWeight: 500, color: "var(--text-primary)",
   },
 };

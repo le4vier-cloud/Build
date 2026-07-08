@@ -122,9 +122,9 @@ export default function PlannerPage({ params }: { params: Promise<{ productId: s
           <div style={s.metricsStrip}>
             {/* Total time */}
             <div style={s.metricChip}>
-              <Clock size={12} color="#8E8E93" />
-              <span style={{ color: "#6E6E73", fontSize: 12 }}>Total time</span>
-              <span style={{ fontWeight: 700, color: "#1D1D1F", fontSize: 12 }}>
+              <Clock size={12} color="var(--text-secondary)" />
+              <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>Total time</span>
+              <span style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: 12 }}>
                 {bd.totalMinutes > 0 ? (Math.floor(bd.totalMinutes / 60) > 0 ? `${Math.floor(bd.totalMinutes / 60)}h ${bd.totalMinutes % 60}m` : `${bd.totalMinutes}m`) : "—"}
               </span>
             </div>
@@ -133,8 +133,8 @@ export default function PlannerPage({ params }: { params: Promise<{ productId: s
             {bottleneckStation && bottleneckDuration > 0 && (
               <div style={s.bottleneckChip}>
                 <Zap size={12} fill="#F56300" color="#F56300" />
-                <span style={{ color: "#C44D00", fontWeight: 600, fontSize: 12 }}>Bottleneck:</span>
-                <span style={{ fontWeight: 700, color: "#1D1D1F", fontSize: 12 }}>{bottleneckStation.name}</span>
+                <span style={{ color: "var(--accent)", fontWeight: 600, fontSize: 12 }}>Bottleneck:</span>
+                <span style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: 12 }}>{bottleneckStation.name}</span>
                 <span style={{
                   backgroundColor: "#F56300", color: "#fff",
                   borderRadius: 4, padding: "1px 7px", fontSize: 11, fontWeight: 700,
@@ -147,8 +147,8 @@ export default function PlannerPage({ params }: { params: Promise<{ productId: s
             {/* Cost per unit */}
             {bd.totalPerUnit > 0 && (
               <div style={s.metricChip}>
-                <span style={{ color: "#6E6E73", fontSize: 12 }}>Cost/unit</span>
-                <span style={{ fontWeight: 700, color: "#1D1D1F", fontSize: 12 }}>
+                <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>Cost/unit</span>
+                <span style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: 12 }}>
                   R {bd.totalPerUnit.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
@@ -213,15 +213,15 @@ const s: Record<string, React.CSSProperties> = {
   metricChip: {
     display: "flex", alignItems: "center", gap: 6,
     padding: "5px 12px",
-    backgroundColor: "#F5F5F7",
-    border: "1px solid #E5E5EA",
+    backgroundColor: "var(--bg)",
+    border: "1px solid var(--border)",
     borderRadius: 999,
   },
   bottleneckChip: {
     display: "flex", alignItems: "center", gap: 6,
     padding: "5px 12px",
-    backgroundColor: "#FFF0E6",
-    border: "1px solid #F5C49A",
+    backgroundColor: "rgba(245,99,0,0.08)",
+    border: "1px solid rgba(245,99,0,0.3)",
     borderRadius: 999,
   },
 };
