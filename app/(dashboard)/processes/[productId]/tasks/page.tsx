@@ -66,8 +66,19 @@ const MACH_TYPES: { key: MachType; label: string; color: string }[] = [
   { key: "grinding",     label: "Grinding",     color: "#9333EA" },
 ];
 
-const SOP_ACCEPTS  = ".pdf,.doc,.docx,.xlsx,.xls,.png,.jpg,.jpeg";
-const MACH_ACCEPTS = ".nc,.gcode,.ngc,.dxf,.step,.stp,.stl,.pdf";
+const SOP_ACCEPTS = ".pdf,.doc,.docx,.xlsx,.xls,.png,.jpg,.jpeg";
+const MACH_ACCEPTS_MAP: Record<MachType, string> = {
+  cnc_milling: ".nc,.gcode,.ngc,.cnc,.tap,.step,.stp,.iges,.igs,.dxf,.sldprt,.x_t,.x_b",
+  cnc_turning: ".nc,.gcode,.ngc,.cnc,.tap,.step,.stp,.dxf",
+  laser:       ".dxf,.dwg,.ai,.svg,.pdf,.eps",
+  plasma:      ".dxf,.dwg,.nc,.gcode",
+  waterjet:    ".dxf,.dwg,.step,.stp,.ai",
+  "3d_print":  ".stl,.obj,.3mf,.step,.stp,.amf,.gcode",
+  welding:     ".jbi,.ls,.urp,.pdf,.docx",
+  sheet_metal: ".dxf,.dwg,.step,.stp,.sldprt",
+  drilling:    ".nc,.gcode,.drl,.dxf",
+  grinding:    ".nc,.gcode,.step,.stp",
+};
 
 interface SOPFile    { id: string; name: string; }
 interface MachFile   { id: string; name: string; machType: MachType; }
@@ -298,7 +309,9 @@ function SlidePanel({ panel, parts, onClose, onSave }: {
               <div style={sp.sectionHead}>
                 <Cpu size={13} color="var(--text-secondary)" />
                 <span style={sp.sectionTitle}>Machining Files</span>
-                <span style={sp.sectionSub}>{MACH_ACCEPTS.replaceAll(",", " ·")}</span>
+                {selMach && (
+                  <span style={sp.sectionSub}>{MACH_ACCEPTS_MAP[selMach].replaceAll(",", " ·")}</span>
+                )}
               </div>
               {/* Machining type selector */}
               <p style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
@@ -339,8 +352,8 @@ function SlidePanel({ panel, parts, onClose, onSave }: {
                   </div>
                 );
               })}
-              <input ref={machRef} type="file" multiple accept={MACH_ACCEPTS} style={{ display: "none" }} onChange={handleMachFiles} />
-              <button type="button" disabled={!selMach} onClick={() => selMach && machRef.current?.click()}
+              <input ref={machRef} type="file" multiple style={{ display: "none" }} onChange={handleMachFiles} />
+              <button type="button" disabled={!selMach} onClick={() => { if (selMach && machRef.current) { machRef.current.accept = MACH_ACCEPTS_MAP[selMach]; machRef.current.click(); } }}
                 style={{ ...sp.attachBtn, opacity: selMach ? 1 : 0.4, cursor: selMach ? "pointer" : "not-allowed" }}>
                 <Upload size={12} /> Attach {selMach ? MACH_TYPES.find(m => m.key === selMach)?.label : "—"} file
               </button>
@@ -444,6 +457,8 @@ export default function TasksPage({ params }: { params: Promise<{ productId: str
   const [overWfId,     setOverWfId]     = useState<string | null>(null);
   const [dragTask,     setDragTask]     = useState<{ wfId: string; taskId: string } | null>(null);
   const [overTaskId,   setOverTaskId]   = useState<string | null>(null);
+  // ref so onDragOver always reads the live value (state update may be async)
+  const dragTaskRef = useRef<{ wfId: string; taskId: string } | null>(null);
 
   const { setData, setSelectedProduct, tasks, workflows, updateTask, addWorkflow, removeWorkflow, removeTaskFromWorkflow, partResources } =
     useManufacturingStore();
@@ -473,17 +488,19 @@ export default function TasksPage({ params }: { params: Promise<{ productId: str
   };
 
   const handleTaskDrop = (toTaskId: string, wfId: string) => {
-    if (!dragTask || dragTask.taskId === toTaskId || dragTask.wfId !== wfId) return;
+    const dt = dragTaskRef.current;
+    if (!dt || dt.taskId === toTaskId || dt.wfId !== wfId) return;
     useManufacturingStore.setState(s => ({
       workflows: s.workflows.map(w => {
         if (w.id !== wfId) return w;
         const tids = [...w.taskIds];
-        const from = tids.indexOf(dragTask.taskId);
+        const from = tids.indexOf(dt.taskId);
         const to   = tids.indexOf(toTaskId);
         if (from === -1 || to === -1) return w;
         return { ...w, taskIds: reorder(tids, from, to) };
       }),
     }));
+    dragTaskRef.current = null;
     setDragTask(null); setOverTaskId(null);
   };
 
@@ -612,9 +629,9 @@ export default function TasksPage({ params }: { params: Promise<{ productId: str
                       return (
                         <div key={t.id}
                           draggable
-                          onDragStart={e => { e.stopPropagation(); setDragTask({ wfId: wf.id, taskId: t.id }); }}
-                          onDragEnd={() => { setDragTask(null); setOverTaskId(null); }}
-                          onDragOver={e => { if (dragTask?.wfId === wf.id && dragTask.taskId !== t.id) { e.preventDefault(); setOverTaskId(t.id); } }}
+                          onDragStart={e => { e.stopPropagation(); const info = { wfId: wf.id, taskId: t.id }; dragTaskRef.current = info; setDragTask(info); }}
+                          onDragEnd={() => { dragTaskRef.current = null; setDragTask(null); setOverTaskId(null); }}
+                          onDragOver={e => { const dt = dragTaskRef.current; if (dt?.wfId === wf.id && dt.taskId !== t.id) { e.preventDefault(); setOverTaskId(t.id); } }}
                           onDragLeave={() => setOverTaskId(null)}
                           onDrop={() => handleTaskDrop(t.id, wf.id)}
                           style={{ opacity: dragTask?.taskId === t.id ? 0.4 : 1, backgroundColor: overTaskId === t.id && dragTask?.wfId === wf.id ? "rgba(245,99,0,0.05)" : "transparent", transition: "opacity 0.15s, background-color 0.1s" }}

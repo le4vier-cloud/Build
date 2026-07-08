@@ -61,7 +61,17 @@ CREATE TABLE task_sop_files (
 CREATE INDEX idx_task_sop_files_task_sort ON task_sop_files (task_id, sort_order);
 
 -- ── 5. Machining files ────────────────────────────────────────
--- Accepted: NC, GCODE, NGC, DXF, STEP, STP, STL, PDF
+-- Accepted per type:
+--   CNC Milling:  .nc .gcode .ngc .cnc .tap .step .stp .iges .igs .dxf .sldprt .x_t .x_b
+--   CNC Turning:  .nc .gcode .ngc .cnc .tap .step .stp .dxf
+--   Laser Cut:    .dxf .dwg .ai .svg .pdf .eps
+--   Plasma Cut:   .dxf .dwg .nc .gcode
+--   Water Jet:    .dxf .dwg .step .stp .ai
+--   3D Print:     .stl .obj .3mf .step .stp .amf .gcode
+--   Welding:      .jbi .ls .urp .pdf .docx
+--   Sheet Metal:  .dxf .dwg .step .stp .sldprt
+--   Drilling:     .nc .gcode .drl .dxf
+--   Grinding:     .nc .gcode .step .stp
 CREATE TABLE task_machining_files (
   id              UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
   task_id         UUID           NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
