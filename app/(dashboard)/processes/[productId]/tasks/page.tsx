@@ -4,11 +4,11 @@ import { use, useEffect, useState } from "react";
 import { useManufacturingStore } from "@/stores/useManufacturingStore";
 import {
   ArrowLeft, Plus, X, Clock, Cpu, User2,
-  ChevronDown, ChevronRight, Workflow, BarChart3,
+  Workflow, BarChart3, Pencil,
 } from "lucide-react";
 import Link from "next/link";
 
-/* ── Demo data (same as planner page — store singleton preserves if navigating) ─ */
+/* ── Demo data ────────────────────────────────────────────────────────── */
 const DEMO = {
   stations: [
     { id: "s1", name: "Prep Station",    childWorkflows: [], wagePerHour: 65, tools: [] },
@@ -27,7 +27,7 @@ const DEMO = {
     { id: "w1", name: "Core Build",   taskIds: ["t1", "t2"] },
     { id: "w2", name: "Final Finish", taskIds: ["t4", "t5"] },
   ],
-  staffResources: [
+  staffResources:  [
     { id: "st1", name: "Jane Smith",          wagePerHour: 85 },
     { id: "st2", name: "Tom Ndlovu",          wagePerHour: 65 },
     { id: "st3", name: "Damien De Villiers",  wagePerHour: 95 },
@@ -45,76 +45,220 @@ const DEMO = {
   ],
 };
 
-type Tab = "tasks" | "workflows";
+/* ── Types ─────────────────────────────────────────────────────────────── */
+type PanelState =
+  | { mode: "new-workflow" }
+  | { mode: "edit-workflow"; wfId: string; name: string }
+  | { mode: "new-task"; targetWfId: string }
+  | { mode: "edit-task"; taskId: string; name: string; duration: string; optionSet: "human" | "machine" }
+  | null;
 
 const fmtMin = (min: number) => {
   const h = Math.floor(min / 60);
   const m = min % 60;
-  return h > 0 ? `${h}h ${m > 0 ? `${m}m` : ""}`.trim() : `${m}m`;
+  return h > 0 ? `${h}h${m > 0 ? ` ${m}m` : ""}` : `${m}m`;
 };
 
-/* ── Page ─────────────────────────────────────────── */
+/* ── Slide-out panel ───────────────────────────────────────────────────── */
+function SlidePanel({ panel, onClose, onSave }: {
+  panel: PanelState;
+  onClose: () => void;
+  onSave: (data: Record<string, unknown>) => void;
+}) {
+  const [name,     setName]     = useState("");
+  const [duration, setDuration] = useState("");
+  const [taskType, setTaskType] = useState<"human" | "machine">("human");
+
+  useEffect(() => {
+    if (!panel) return;
+    if (panel.mode === "edit-workflow") {
+      setName(panel.name);
+    } else if (panel.mode === "edit-task") {
+      setName(panel.name);
+      setDuration(panel.duration);
+      setTaskType(panel.optionSet);
+    } else {
+      setName(""); setDuration(""); setTaskType("human");
+    }
+  }, [panel]);
+
+  const isOpen     = panel !== null;
+  const isWorkflow = panel?.mode === "new-workflow" || panel?.mode === "edit-workflow";
+  const isEdit     = panel?.mode?.startsWith("edit");
+
+  const title =
+    panel?.mode === "new-workflow" ? "New Workflow"
+    : panel?.mode === "edit-workflow" ? "Edit Workflow"
+    : panel?.mode === "new-task"     ? "New Task"
+    : panel?.mode === "edit-task"    ? "Edit Task"
+    : "";
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    if (isWorkflow) {
+      onSave({ name: name.trim() });
+    } else {
+      const dur = parseInt(duration, 10);
+      if (isNaN(dur) || dur <= 0) return;
+      onSave({ name: name.trim(), duration: dur, optionSet: taskType });
+    }
+  };
+
+  return (
+    <>
+      {/* Transparent backdrop to close on outside click */}
+      <div
+        onClick={onClose}
+        style={{
+          position: "fixed", inset: 0, zIndex: 49,
+          pointerEvents: isOpen ? "auto" : "none",
+        }}
+      />
+      {/* Drawer */}
+      <div style={{
+        position: "fixed", top: 0, right: 0, height: "100vh",
+        width: 320, zIndex: 50,
+        backgroundColor: "var(--bg)",
+        borderLeft: "1px solid var(--border)",
+        boxShadow: isOpen ? "-8px 0 32px rgba(0,0,0,0.1)" : "none",
+        transform: `translateX(${isOpen ? 0 : 320}px)`,
+        transition: "transform 0.25s cubic-bezier(0.4,0,0.2,1)",
+        display: "flex", flexDirection: "column",
+        pointerEvents: isOpen ? "auto" : "none",
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: "20px 20px 16px",
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          borderBottom: "1px solid var(--border)", flexShrink: 0,
+        }}>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>
+            {title}
+          </h3>
+          <button onClick={onClose} style={sp.iconBtn}><X size={14} /></button>
+        </div>
+        {/* Form */}
+        <form onSubmit={handleSubmit} style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16, flex: 1 }}>
+          <div style={sp.fieldWrap}>
+            <label style={sp.label}>Name *</label>
+            <input
+              style={sp.input}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={isWorkflow ? "e.g. Core Build" : "e.g. Weld Frame"}
+              autoFocus
+            />
+          </div>
+          {!isWorkflow && (
+            <>
+              <div style={sp.fieldWrap}>
+                <label style={sp.label}>Duration (minutes) *</label>
+                <input
+                  style={sp.input}
+                  type="number" min="1"
+                  value={duration}
+                  onChange={(e) => setDuration(e.target.value)}
+                  placeholder="e.g. 45"
+                />
+              </div>
+              <div style={sp.fieldWrap}>
+                <label style={sp.label}>Type</label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button"
+                    onClick={() => setTaskType("human")}
+                    style={{ ...sp.typeBtn, ...(taskType === "human" ? sp.typeBtnHuman : {}) }}>
+                    <User2 size={13} /> Human
+                  </button>
+                  <button type="button"
+                    onClick={() => setTaskType("machine")}
+                    style={{ ...sp.typeBtn, ...(taskType === "machine" ? sp.typeBtnMachine : {}) }}>
+                    <Cpu size={13} /> Machine
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+          <div style={{ marginTop: "auto", display: "flex", gap: 8, paddingTop: 8 }}>
+            <button type="submit" style={{ ...sp.primaryBtn, flex: 1 }}>
+              {isEdit ? "Save changes" : "Create"}
+            </button>
+            <button type="button" onClick={onClose} style={sp.cancelBtn}>Cancel</button>
+          </div>
+        </form>
+      </div>
+    </>
+  );
+}
+
+/* ── Page ──────────────────────────────────────────────────────────────── */
 export default function TasksPage({ params }: { params: Promise<{ productId: string }> }) {
   const { productId } = use(params);
-  const [tab, setTab] = useState<Tab>("tasks");
+  const [panel, setPanel] = useState<PanelState>(null);
 
   const {
     setData, setSelectedProduct,
     tasks, workflows,
-    addTask, removeTask,
+    updateTask,
     addWorkflow, removeWorkflow,
-    addTaskToWorkflow, removeTaskFromWorkflow,
+    removeTaskFromWorkflow,
   } = useManufacturingStore();
 
-  /* Load demo data — store singleton means data persists if navigating from planner */
   useEffect(() => {
     const state = useManufacturingStore.getState();
     if (state.tasks.length === 0) {
       setData(DEMO);
-      setSelectedProduct({ id: productId, name: "Product", baseTasks: DEMO.tasks.map((t) => t.id), options: [] });
+      setSelectedProduct({
+        id: productId, name: "Product",
+        baseTasks: DEMO.tasks.map((t) => t.id),
+        options: [],
+      });
     }
   }, [productId, setData, setSelectedProduct]);
 
-  /* ── New task form ── */
-  const [newTaskName,     setNewTaskName]     = useState("");
-  const [newTaskDuration, setNewTaskDuration] = useState("");
-  const [newTaskType,     setNewTaskType]     = useState<"human" | "machine">("human");
-  const [showTaskForm,    setShowTaskForm]    = useState(false);
+  const closePanel = () => setPanel(null);
 
-  const submitTask = (e: React.FormEvent) => {
-    e.preventDefault();
-    const dur = parseInt(newTaskDuration, 10);
-    if (!newTaskName.trim() || isNaN(dur) || dur <= 0) return;
-    addTask({ name: newTaskName.trim(), duration: dur, optionSet: newTaskType });
-    setNewTaskName(""); setNewTaskDuration(""); setNewTaskType("human");
-    setShowTaskForm(false);
+  const handleSave = (data: Record<string, unknown>) => {
+    if (!panel) return;
+    switch (panel.mode) {
+      case "new-workflow":
+        addWorkflow({ name: data.name as string, taskIds: [] });
+        break;
+      case "edit-workflow":
+        useManufacturingStore.setState((state) => ({
+          workflows: state.workflows.map((w) =>
+            w.id === panel.wfId ? { ...w, name: data.name as string } : w
+          ),
+        }));
+        break;
+      case "new-task":
+        useManufacturingStore.setState((state) => {
+          const newId = `t-${Date.now()}`;
+          return {
+            tasks: [...state.tasks, {
+              id: newId,
+              name: data.name as string,
+              duration: data.duration as number,
+              optionSet: data.optionSet as "human" | "machine",
+            }],
+            workflows: state.workflows.map((w) =>
+              w.id === panel.targetWfId ? { ...w, taskIds: [...w.taskIds, newId] } : w
+            ),
+          };
+        });
+        break;
+      case "edit-task":
+        updateTask(panel.taskId, {
+          name: data.name as string,
+          duration: data.duration as number,
+          optionSet: data.optionSet as "human" | "machine",
+        });
+        break;
+    }
+    closePanel();
   };
 
-  /* ── New workflow form ── */
-  const [newWfName,    setNewWfName]    = useState("");
-  const [showWfForm,   setShowWfForm]   = useState(false);
-  const [expandedWfs,  setExpandedWfs]  = useState<Set<string>>(new Set());
-  const [addingTaskTo, setAddingTaskTo] = useState<string | null>(null);
-
-  const submitWorkflow = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newWfName.trim()) return;
-    addWorkflow({ name: newWfName.trim(), taskIds: [] });
-    setNewWfName(""); setShowWfForm(false);
-  };
-
-  const toggleExpand = (id: string) => {
-    const s = new Set(expandedWfs);
-    s.has(id) ? s.delete(id) : s.add(id);
-    setExpandedWfs(s);
-  };
-
-  /* Tasks not yet in any workflow */
-  const unassignedTasks = tasks.filter(
-    (t) => !workflows.some((w) => w.taskIds.includes(t.id))
-  );
-
-  const totalTaskTime = tasks.reduce((s, t) => s + t.duration, 0);
+  const totalTime = tasks.reduce((sum, t) => sum + t.duration, 0);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 0, height: "calc(100vh - 100px)" }}>
@@ -126,313 +270,121 @@ export default function TasksPage({ params }: { params: Promise<{ productId: str
             <ArrowLeft size={15} strokeWidth={2} /> Processes
           </Link>
           <h2 style={s.title}>Task Manager</h2>
-          <Link href={`/processes/${productId}/planner`} style={{ ...s.back, color: "var(--text-secondary)", fontSize: 12 }}>
+          <Link
+            href={`/processes/${productId}/planner`}
+            style={{ ...s.back, color: "var(--text-secondary)", fontSize: 12 }}
+          >
             <BarChart3 size={13} /> Production Planner
           </Link>
         </div>
-        {/* Summary pills */}
         <div style={{ display: "flex", gap: 8 }}>
           <div style={s.pill}>
             <Clock size={11} color="var(--text-secondary)" />
-            <span>{fmtMin(totalTaskTime)} total</span>
+            <span>{fmtMin(totalTime)} total</span>
           </div>
           <div style={s.pill}>
             <Workflow size={11} color="var(--text-secondary)" />
             <span>{workflows.length} workflows</span>
           </div>
-          <div style={s.pill}>
-            <Clock size={11} color="var(--text-secondary)" />
-            <span>{tasks.length} tasks</span>
-          </div>
         </div>
       </div>
 
-      {/* ── Tabs ── */}
-      <div style={s.tabBar}>
-        {(["tasks", "workflows"] as Tab[]).map((t) => (
-          <button key={t} onClick={() => setTab(t)}
-            style={{ ...s.tabBtn, ...(tab === t ? s.tabActive : {}) }}>
-            {t === "tasks" ? <Clock size={13} /> : <Workflow size={13} />}
-            {t.charAt(0).toUpperCase() + t.slice(1)}
-            {t === "tasks" && tasks.length > 0 && (
-              <span style={s.countBadge}>{tasks.length}</span>
-            )}
-            {t === "workflows" && workflows.length > 0 && (
-              <span style={s.countBadge}>{workflows.length}</span>
-            )}
-          </button>
-        ))}
+      {/* ── Section intro ── */}
+      <div style={{ flexShrink: 0, marginBottom: 16 }}>
+        <h3 style={s.sectionTitle}>Workflows</h3>
+        <p style={s.sectionSub}>
+          Group tasks into workflows. Drag a workflow onto a station node in the Planner to assign all its tasks at once.
+        </p>
       </div>
 
-      {/* ── Content ── */}
+      {/* ── Workflow list ── */}
       <div style={{ flex: 1, overflowY: "auto" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
-        {/* ══════════════ TASKS TAB ══════════════ */}
-        {tab === "tasks" && (
-          <div style={s.content}>
-            <div style={s.sectionHeader}>
-              <div>
-                <h3 style={s.sectionTitle}>Tasks</h3>
-                <p style={s.sectionSub}>
-                  Define individual operations. Group them into workflows for reuse across stations.
-                </p>
-              </div>
-              <button onClick={() => setShowTaskForm((v) => !v)} style={s.addBtn}>
-                <Plus size={14} /> New Task
-              </button>
-            </div>
+          {workflows.map((wf) => {
+            const wfTasks = tasks.filter((t) => wf.taskIds.includes(t.id));
+            const wfTime  = wfTasks.reduce((sum, t) => sum + t.duration, 0);
+            return (
+              <div key={wf.id} style={s.wfCard}>
 
-            {/* New task inline form */}
-            {showTaskForm && (
-              <form onSubmit={submitTask} style={s.inlineForm}>
-                <input
-                  style={{ ...s.input, flex: 2 }}
-                  placeholder="Task name (e.g. Weld Frame)"
-                  value={newTaskName}
-                  onChange={(e) => setNewTaskName(e.target.value)}
-                  autoFocus
-                />
-                <input
-                  style={{ ...s.input, width: 100 }}
-                  placeholder="Duration (min)"
-                  type="number" min="1"
-                  value={newTaskDuration}
-                  onChange={(e) => setNewTaskDuration(e.target.value)}
-                />
-                <div style={s.typeToggle}>
-                  <button type="button"
-                    onClick={() => setNewTaskType("human")}
-                    style={{ ...s.typeBtn, ...(newTaskType === "human" ? s.typeBtnActive : {}) }}>
-                    <User2 size={12} /> Human
+                {/* Workflow header */}
+                <div style={s.wfHead}>
+                  <Workflow size={15} color="#F56300" />
+                  <span style={s.wfName}>{wf.name}</span>
+                  <span style={s.wfMeta}>{wfTasks.length} tasks · {fmtMin(wfTime)}</span>
+                  <div style={{ flex: 1 }} />
+                  <button
+                    style={s.iconBtn}
+                    title="Edit workflow"
+                    onClick={() => setPanel({ mode: "edit-workflow", wfId: wf.id, name: wf.name })}
+                  >
+                    <Pencil size={12} />
                   </button>
-                  <button type="button"
-                    onClick={() => setNewTaskType("machine")}
-                    style={{ ...s.typeBtn, ...(newTaskType === "machine" ? s.typeBtnActiveMachine : {}) }}>
-                    <Cpu size={12} /> Machine
+                  <button style={s.iconBtn} title="Remove workflow" onClick={() => removeWorkflow(wf.id)}>
+                    <X size={13} />
                   </button>
                 </div>
-                <button type="submit" style={s.submitBtn}>Add Task</button>
-                <button type="button" onClick={() => setShowTaskForm(false)} style={s.cancelBtn}>
-                  <X size={13} />
-                </button>
-              </form>
-            )}
 
-            {/* Tasks table */}
-            {tasks.length === 0 ? (
-              <div style={s.emptyState}>
-                <Clock size={32} color="var(--border)" strokeWidth={1.5} />
-                <p style={s.emptyTitle}>No tasks yet</p>
-                <p style={s.emptySub}>Create your first task to start planning production</p>
-              </div>
-            ) : (
-              <div style={s.table}>
-                {/* Table header */}
-                <div style={s.tableHead}>
-                  <span style={{ flex: 3 }}>Name</span>
-                  <span style={{ width: 90, textAlign: "center" }}>Duration</span>
-                  <span style={{ width: 90, textAlign: "center" }}>Type</span>
-                  <span style={{ width: 120 }}>Workflow</span>
-                  <span style={{ width: 40 }} />
-                </div>
-
-                {/* Table rows */}
-                {tasks.map((task) => {
-                  const wf = workflows.find((w) => w.taskIds.includes(task.id));
-                  return (
-                    <div key={task.id} style={s.tableRow}>
-                      <span style={{ flex: 3, fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>
-                        {task.name}
+                {/* Task list */}
+                <div style={s.wfBody}>
+                  {wfTasks.map((t, idx) => (
+                    <div key={t.id} style={s.taskRow}>
+                      <span style={s.taskIdx}>{idx + 1}</span>
+                      <span style={s.taskName}>{t.name}</span>
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, borderRadius: 4, padding: "2px 6px", flexShrink: 0,
+                        backgroundColor: t.optionSet === "machine" ? "rgba(37,99,235,0.12)" : "rgba(5,150,105,0.12)",
+                        color: t.optionSet === "machine" ? "#2563EB" : "#059669",
+                      }}>
+                        {t.optionSet}
                       </span>
-                      <div style={{ width: 90, display: "flex", alignItems: "center", justifyContent: "center", gap: 4, color: "var(--text-secondary)", fontSize: 12 }}>
-                        <Clock size={11} color="var(--text-tertiary)" />
-                        {fmtMin(task.duration)}
-                      </div>
-                      <div style={{ width: 90, display: "flex", justifyContent: "center" }}>
-                        <span style={{
-                          fontSize: 10, fontWeight: 700, borderRadius: 4, padding: "3px 8px",
-                          backgroundColor: task.optionSet === "machine" ? "rgba(37,99,235,0.12)" : "rgba(5,150,105,0.12)",
-                          color: task.optionSet === "machine" ? "#2563EB" : "#059669",
-                        }}>
-                          {task.optionSet === "machine" ? (
-                            <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                              <Cpu size={9} /> machine
-                            </span>
-                          ) : (
-                            <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                              <User2 size={9} /> human
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                      <div style={{ width: 120 }}>
-                        {wf ? (
-                          <span style={{ fontSize: 11, color: "#F56300", fontWeight: 600 }}>
-                            {wf.name}
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>—</span>
-                        )}
-                      </div>
-                      <button style={s.rowRemoveBtn} onClick={() => removeTask(task.id)}>
-                        <X size={13} />
+                      <span style={s.taskDur}>{fmtMin(t.duration)}</span>
+                      <button
+                        style={s.iconBtn}
+                        title="Edit task"
+                        onClick={() => setPanel({
+                          mode: "edit-task",
+                          taskId: t.id,
+                          name: t.name,
+                          duration: String(t.duration),
+                          optionSet: t.optionSet,
+                        })}
+                      >
+                        <Pencil size={11} />
+                      </button>
+                      <button style={s.iconBtn} title="Remove task" onClick={() => removeTaskFromWorkflow(wf.id, t.id)}>
+                        <X size={12} />
                       </button>
                     </div>
-                  );
-                })}
+                  ))}
+
+                  {/* Add task skeleton */}
+                  <button
+                    style={s.addTaskSkeleton}
+                    onClick={() => setPanel({ mode: "new-task", targetWfId: wf.id })}
+                  >
+                    <Plus size={13} strokeWidth={2} /> Add task
+                  </button>
+                </div>
               </div>
-            )}
-          </div>
-        )}
+            );
+          })}
 
-        {/* ══════════════ WORKFLOWS TAB ══════════════ */}
-        {tab === "workflows" && (
-          <div style={s.content}>
-            <div style={s.sectionHeader}>
-              <div>
-                <h3 style={s.sectionTitle}>Workflows</h3>
-                <p style={s.sectionSub}>
-                  Group related tasks into workflows. Drag a workflow onto a station node to assign all its tasks at once.
-                </p>
-              </div>
-              <button onClick={() => setShowWfForm((v) => !v)} style={s.addBtn}>
-                <Plus size={14} /> New Workflow
-              </button>
-            </div>
+          {/* Add workflow skeleton */}
+          <button style={s.addWfSkeleton} onClick={() => setPanel({ mode: "new-workflow" })}>
+            <Plus size={14} strokeWidth={2} /> Add Workflow
+          </button>
 
-            {/* New workflow form */}
-            {showWfForm && (
-              <form onSubmit={submitWorkflow} style={s.inlineForm}>
-                <input
-                  style={{ ...s.input, flex: 1 }}
-                  placeholder="Workflow name (e.g. Core Build)"
-                  value={newWfName}
-                  onChange={(e) => setNewWfName(e.target.value)}
-                  autoFocus
-                />
-                <button type="submit" style={s.submitBtn}>Create</button>
-                <button type="button" onClick={() => setShowWfForm(false)} style={s.cancelBtn}>
-                  <X size={13} />
-                </button>
-              </form>
-            )}
-
-            {/* Workflow cards */}
-            {workflows.length === 0 ? (
-              <div style={s.emptyState}>
-                <Workflow size={32} color="var(--border)" strokeWidth={1.5} />
-                <p style={s.emptyTitle}>No workflows yet</p>
-                <p style={s.emptySub}>Create a workflow to group tasks for reuse on stations</p>
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {workflows.map((wf) => {
-                  const wfTasks  = tasks.filter((t) => wf.taskIds.includes(t.id));
-                  const wfTime   = wfTasks.reduce((s, t) => s + t.duration, 0);
-                  const isOpen   = expandedWfs.has(wf.id);
-                  const isAdding = addingTaskTo === wf.id;
-
-                  return (
-                    <div key={wf.id} style={s.wfCard}>
-                      {/* Workflow header */}
-                      <div style={s.wfHead}>
-                        <button style={s.chevronBtn} onClick={() => toggleExpand(wf.id)}>
-                          {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                        </button>
-                        <Workflow size={15} color="#F56300" />
-                        <span style={s.wfName}>{wf.name}</span>
-                        <span style={s.wfMeta}>{wfTasks.length} tasks · {fmtMin(wfTime)}</span>
-                        <div style={{ flex: 1 }} />
-                        <button
-                          style={s.wfAddTaskBtn}
-                          onClick={() => setAddingTaskTo(isAdding ? null : wf.id)}
-                        >
-                          <Plus size={12} /> Add task
-                        </button>
-                        <button style={s.rowRemoveBtn} onClick={() => removeWorkflow(wf.id)}>
-                          <X size={13} />
-                        </button>
-                      </div>
-
-                      {/* Add task picker */}
-                      {isAdding && (
-                        <div style={s.addTaskPicker}>
-                          <p style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 600, marginBottom: 6 }}>
-                            SELECT TASK TO ADD
-                          </p>
-                          {unassignedTasks.length === 0 ? (
-                            <p style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
-                              All tasks are already assigned to a workflow. Create new tasks in the Tasks tab.
-                            </p>
-                          ) : (
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                              {unassignedTasks.map((t) => (
-                                <button
-                                  key={t.id}
-                                  onClick={() => {
-                                    addTaskToWorkflow(wf.id, t.id);
-                                    setAddingTaskTo(null);
-                                  }}
-                                  style={s.taskPickChip}
-                                >
-                                  {t.name}
-                                  <span style={{ color: "var(--text-tertiary)", fontSize: 10 }}>
-                                    {fmtMin(t.duration)}
-                                  </span>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Task list (expanded) */}
-                      {isOpen && (
-                        <div style={s.wfTaskList}>
-                          {wfTasks.length === 0 && (
-                            <p style={{ fontSize: 12, color: "var(--text-tertiary)", padding: "4px 0" }}>
-                              No tasks yet — click "+ Add task" to add some.
-                            </p>
-                          )}
-                          {wfTasks.map((t, idx) => (
-                            <div key={t.id} style={s.wfTaskRow}>
-                              <span style={s.wfTaskIdx}>{idx + 1}</span>
-                              <span style={{ flex: 1, fontSize: 13, color: "var(--text-primary)", fontWeight: 500 }}>
-                                {t.name}
-                              </span>
-                              <span style={{
-                                fontSize: 9, fontWeight: 700, borderRadius: 4, padding: "2px 6px",
-                                backgroundColor: t.optionSet === "machine" ? "rgba(37,99,235,0.12)" : "rgba(5,150,105,0.12)",
-                                color: t.optionSet === "machine" ? "#2563EB" : "#059669",
-                              }}>
-                                {t.optionSet}
-                              </span>
-                              <span style={{ fontSize: 11, color: "var(--text-tertiary)", width: 48, textAlign: "right" }}>
-                                {fmtMin(t.duration)}
-                              </span>
-                              <button
-                                style={s.rowRemoveBtn}
-                                onClick={() => removeTaskFromWorkflow(wf.id, t.id)}
-                              >
-                                <X size={12} />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
+        </div>
       </div>
+
+      {/* ── Slide-out panel ── */}
+      <SlidePanel panel={panel} onClose={closePanel} onSave={handleSave} />
     </div>
   );
 }
 
-/* ── Styles ─────────────────────────────────────── */
+/* ── Page styles ────────────────────────────────────────────────────────── */
 const s: Record<string, React.CSSProperties> = {
   header: {
     display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -449,150 +401,96 @@ const s: Record<string, React.CSSProperties> = {
     border: "1px solid var(--border)", borderRadius: 999,
     fontSize: 12, color: "var(--text-secondary)", fontWeight: 500,
   },
-  tabBar: {
-    display: "flex", gap: 2, borderBottom: "1px solid var(--border)",
-    padding: "0 0 0 0", marginBottom: 0, flexShrink: 0,
-  },
-  tabBtn: {
-    display: "flex", alignItems: "center", gap: 6,
-    padding: "10px 16px", fontSize: 13, fontWeight: 500,
-    color: "var(--text-secondary)", background: "none", border: "none",
-    borderBottom: "2px solid transparent", cursor: "pointer",
-    marginBottom: -1,
-  },
-  tabActive: {
-    color: "var(--text-primary)", borderBottomColor: "#F56300", fontWeight: 600,
-  },
-  countBadge: {
-    backgroundColor: "var(--bg)", color: "var(--text-secondary)",
-    borderRadius: 4, padding: "1px 6px", fontSize: 11, fontWeight: 700,
-  },
-  content: {
-    padding: "20px 0", display: "flex", flexDirection: "column", gap: 16,
-  },
-  sectionHeader: {
-    display: "flex", justifyContent: "space-between", alignItems: "flex-start",
-  },
   sectionTitle: { fontSize: 16, fontWeight: 700, color: "var(--text-primary)" },
   sectionSub: { fontSize: 12, color: "var(--text-secondary)", marginTop: 3, maxWidth: 480 },
-  addBtn: {
-    display: "flex", alignItems: "center", gap: 6,
-    padding: "0 16px", height: 34,
-    backgroundColor: "#F56300", color: "#fff",
-    border: "none", borderRadius: 8,
-    fontSize: 13, fontWeight: 600, cursor: "pointer",
-    flexShrink: 0,
+  iconBtn: {
+    background: "none", border: "none", cursor: "pointer", flexShrink: 0,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    color: "var(--text-tertiary)", padding: 4, borderRadius: 4,
   },
-  inlineForm: {
-    display: "flex", alignItems: "center", gap: 8,
-    padding: "12px 16px",
-    backgroundColor: "rgba(245,99,0,0.08)",
-    border: "1px solid rgba(245,99,0,0.3)",
-    borderRadius: 10,
-  },
-  input: {
-    height: 34, border: "1px solid var(--input-border)", borderRadius: 8,
-    padding: "0 10px", fontSize: 13, color: "var(--text-primary)",
-    backgroundColor: "var(--bg)", outline: "none",
-  },
-  typeToggle: { display: "flex", gap: 2 },
-  typeBtn: {
-    display: "flex", alignItems: "center", gap: 4,
-    padding: "0 10px", height: 34,
-    backgroundColor: "var(--bg)", border: "1px solid var(--input-border)",
-    borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 500, color: "var(--text-secondary)",
-  },
-  typeBtnActive: { backgroundColor: "#F0FAF3", borderColor: "#059669", color: "#059669" },
-  typeBtnActiveMachine: { backgroundColor: "#EFF6FF", borderColor: "#2563EB", color: "#2563EB" },
-  submitBtn: {
-    height: 34, padding: "0 16px",
-    backgroundColor: "var(--btn-primary)", color: "#fff",
-    border: "none", borderRadius: 8,
-    fontSize: 13, fontWeight: 600, cursor: "pointer",
-  },
-  cancelBtn: {
-    height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center",
-    backgroundColor: "var(--bg)", border: "1px solid var(--input-border)",
-    borderRadius: 8, cursor: "pointer", color: "var(--text-secondary)",
-  },
-  table: { display: "flex", flexDirection: "column", gap: 0 },
-  tableHead: {
-    display: "flex", alignItems: "center",
-    padding: "8px 12px",
-    fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)",
-    textTransform: "uppercase", letterSpacing: "0.06em",
-    backgroundColor: "var(--bg)", borderRadius: "8px 8px 0 0",
-    border: "1px solid var(--border)",
-  },
-  tableRow: {
-    display: "flex", alignItems: "center",
-    padding: "10px 12px",
-    borderBottom: "1px solid var(--border)",
-    border: "1px solid var(--border)",
-    borderTop: "none",
-    backgroundColor: "var(--bg)",
-  },
-  emptyState: {
-    display: "flex", flexDirection: "column", alignItems: "center",
-    gap: 10, padding: "48px 0", color: "var(--text-tertiary)", textAlign: "center",
-  },
-  emptyTitle: { fontSize: 15, fontWeight: 600, color: "var(--text-secondary)" },
-  emptySub: { fontSize: 13, color: "var(--text-tertiary)", maxWidth: 320 },
-  rowRemoveBtn: {
-    background: "none", border: "none", cursor: "pointer",
-    display: "flex", color: "var(--text-tertiary)", padding: 4, borderRadius: 4,
-    flexShrink: 0,
-  },
-  /* Workflow card styles */
+  /* Workflow card */
   wfCard: {
     backgroundColor: "var(--bg)",
     border: "1px solid var(--border)",
-    borderRadius: 12,
-    overflow: "hidden",
+    borderRadius: 12, overflow: "hidden",
   },
   wfHead: {
     display: "flex", alignItems: "center", gap: 10,
     padding: "12px 16px",
   },
-  chevronBtn: {
-    background: "none", border: "none", cursor: "pointer",
-    display: "flex", color: "var(--text-secondary)", padding: 0,
-  },
   wfName: { fontSize: 14, fontWeight: 700, color: "var(--text-primary)" },
   wfMeta: { fontSize: 12, color: "var(--text-secondary)" },
-  wfAddTaskBtn: {
-    display: "flex", alignItems: "center", gap: 5,
-    padding: "4px 10px", height: 28,
-    backgroundColor: "var(--bg)", border: "1px solid var(--border)",
-    borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 500, color: "var(--text-secondary)",
-  },
-  wfTaskList: {
+  /* Task rows */
+  wfBody: {
     padding: "0 16px 12px",
     display: "flex", flexDirection: "column", gap: 0,
     borderTop: "1px solid var(--border)",
   },
-  wfTaskRow: {
+  taskRow: {
     display: "flex", alignItems: "center", gap: 10,
     padding: "8px 0",
     borderBottom: "1px solid var(--border)",
   },
-  wfTaskIdx: {
-    width: 20, height: 20, borderRadius: "50%",
-    backgroundColor: "var(--bg)", color: "var(--text-secondary)",
+  taskIdx: {
+    width: 20, height: 20, borderRadius: "50%", flexShrink: 0,
+    border: "1px solid var(--border)",
+    backgroundColor: "var(--surface)", color: "var(--text-secondary)",
     fontSize: 10, fontWeight: 700,
     display: "flex", alignItems: "center", justifyContent: "center",
-    flexShrink: 0,
   },
-  addTaskPicker: {
-    padding: "12px 16px",
-    borderTop: "1px solid var(--border)",
-    backgroundColor: "var(--surface)",
+  taskName: { flex: 1, fontSize: 13, color: "var(--text-primary)", fontWeight: 500 },
+  taskDur: { fontSize: 11, color: "var(--text-tertiary)", width: 40, textAlign: "right", flexShrink: 0 },
+  /* Skeleton add buttons */
+  addTaskSkeleton: {
+    width: "100%", height: 36, marginTop: 8,
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+    border: "1.5px dashed var(--border)", borderRadius: 8,
+    background: "none", cursor: "pointer",
+    fontSize: 12, fontWeight: 500, color: "var(--text-tertiary)",
   },
-  taskPickChip: {
-    display: "flex", alignItems: "center", gap: 6,
-    padding: "5px 12px",
-    backgroundColor: "var(--bg)", border: "1px solid var(--border)",
-    borderRadius: 999, cursor: "pointer", fontSize: 12,
-    fontWeight: 500, color: "var(--text-primary)",
+  addWfSkeleton: {
+    width: "100%", height: 52,
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+    border: "2px dashed var(--border)", borderRadius: 12,
+    background: "none", cursor: "pointer",
+    fontSize: 13, fontWeight: 500, color: "var(--text-tertiary)",
+  },
+};
+
+/* ── Panel styles ───────────────────────────────────────────────────────── */
+const sp: Record<string, React.CSSProperties> = {
+  iconBtn: {
+    background: "none", border: "none", cursor: "pointer",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    color: "var(--text-secondary)", padding: 6, borderRadius: 6,
+  },
+  fieldWrap: { display: "flex", flexDirection: "column", gap: 6 },
+  label: { fontSize: 13, fontWeight: 500, color: "var(--text-primary)" },
+  input: {
+    height: 38, border: "1px solid var(--input-border)", borderRadius: 8,
+    padding: "0 12px", fontSize: 14, color: "var(--text-primary)",
+    backgroundColor: "var(--surface)", outline: "none",
+    width: "100%", boxSizing: "border-box",
+  },
+  typeBtn: {
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+    padding: "0 14px", height: 36, flex: 1,
+    backgroundColor: "var(--bg)", border: "1px solid var(--input-border)",
+    borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 500,
+    color: "var(--text-secondary)",
+  },
+  typeBtnHuman:   { backgroundColor: "rgba(5,150,105,0.1)",  borderColor: "#059669", color: "#059669" },
+  typeBtnMachine: { backgroundColor: "rgba(37,99,235,0.1)",  borderColor: "#2563EB", color: "#2563EB" },
+  primaryBtn: {
+    height: 40, padding: "0 20px",
+    backgroundColor: "var(--btn-primary)", color: "#fff",
+    border: "none", borderRadius: 8,
+    fontSize: 14, fontWeight: 600, cursor: "pointer",
+  },
+  cancelBtn: {
+    height: 40, padding: "0 14px",
+    backgroundColor: "var(--bg)", border: "1px solid var(--input-border)",
+    borderRadius: 8, cursor: "pointer",
+    fontSize: 13, fontWeight: 500, color: "var(--text-secondary)",
   },
 };

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 const NAV_ITEMS = [
+  { href: "/processes",  icon: Workflow,       label: "Processes" },
   { href: "/factory",    icon: Building2,      label: "Factory" },
   { href: "/staff",      icon: Users,          label: "Staff" },
   { href: "/products",   icon: ShoppingBag,    label: "Products" },
@@ -18,7 +19,6 @@ const NAV_ITEMS = [
   { href: "/parts-os",   icon: ArrowUpCircle,  label: "Parts (OS)" },
   { href: "/parts-im",   icon: Link2,          label: "Parts (IM)" },
   { href: "/inventory",  icon: Archive,        label: "Inventory" },
-  { href: "/processes",  icon: Workflow,       label: "Processes" },
   { href: "/clients",    icon: UserCircle,     label: "Clients" },
   { href: "/orders",     icon: CalendarDays,   label: "Orders" },
 ];
