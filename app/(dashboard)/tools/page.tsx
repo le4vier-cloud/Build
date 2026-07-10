@@ -13,6 +13,8 @@ import { useSelection } from "@/hooks/useSelection";
 import { SelectCheckbox } from "@/components/ui/select-checkbox";
 import { RowActions } from "@/components/ui/row-actions";
 import { BulkActionBar } from "@/components/ui/bulk-action-bar";
+import { SectionFilter } from "@/components/ui/section-filter";
+import { RangeHistogram } from "@/components/ui/range-histogram";
 import { exportToCsv } from "@/lib/csv-export";
 
 /* ── Types ─────────────────────────────────────────────── */
@@ -165,12 +167,22 @@ function CostField({
 /* ═══════════════════════════════════════════════════════════
    Tool List
 ═══════════════════════════════════════════════════════════ */
-function ToolList({ tools, onEdit, onDelete, sel, onAdd }: {
+function ToolList({
+  tools, onEdit, onDelete, sel, onAdd, search, onSearchChange,
+  idleRange, onIdleRangeChange, workingRange, onWorkingRangeChange, allTools,
+}: {
   tools: Tool[];
   onEdit: (t: Tool) => void;
   onDelete: (id: string) => void;
   sel: ReturnType<typeof useSelection<string>>;
   onAdd: () => void;
+  search: string;
+  onSearchChange: (v: string) => void;
+  idleRange: [number, number];
+  onIdleRangeChange: (v: [number, number]) => void;
+  workingRange: [number, number];
+  onWorkingRangeChange: (v: [number, number]) => void;
+  allTools: Tool[];
 }) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
@@ -179,6 +191,32 @@ function ToolList({ tools, onEdit, onDelete, sel, onAdd }: {
       style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 680 }}
       onClick={(e) => { if (e.target === e.currentTarget) sel.clear(); }}
     >
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <SectionFilter
+          search={search}
+          onSearchChange={onSearchChange}
+          searchPlaceholder="Search tools..."
+          active={idleRange[0] > 0 || idleRange[1] < 99 || workingRange[0] > 0 || workingRange[1] < 99}
+        >
+          <RangeHistogram
+            label="Idle Cost / min"
+            values={allTools.map(t => t.cost_per_min_idle)}
+            min={0} max={Math.max(...allTools.map(t => t.cost_per_min_idle), 1)}
+            value={idleRange}
+            onChange={onIdleRangeChange}
+            format={(n) => `R${n.toFixed(2)}`}
+          />
+          <RangeHistogram
+            label="Working Cost / min"
+            values={allTools.map(t => t.cost_per_min_working)}
+            min={0} max={Math.max(...allTools.map(t => t.cost_per_min_working), 1)}
+            value={workingRange}
+            onChange={onWorkingRangeChange}
+            format={(n) => `R${n.toFixed(2)}`}
+          />
+        </SectionFilter>
+      </div>
+
       {tools.length === 0 && (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "48px 0", color: "var(--text-tertiary)" }}>
           <Scissors size={32} strokeWidth={1.2} />
@@ -835,7 +873,17 @@ export default function ToolsPage() {
   const [tools, setTools]         = useState<Tool[]>(SEED_TOOLS);
   const [records, setRecords]     = useState<ServiceRecord[]>(SEED_RECORDS);
   const [alerts, setAlerts]       = useState<ServiceAlert[]>(SEED_ALERTS);
+  const [search, setSearch]       = useState("");
+  const [idleRange,   setIdleRange]   = useState<[number, number]>([0, 99]);
+  const [workingRange, setWorkingRange] = useState<[number, number]>([0, 99]);
   const sel = useSelection<string>();
+
+  const filteredTools = tools.filter(t => {
+    if (search && !t.name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (t.cost_per_min_idle < idleRange[0] || t.cost_per_min_idle > idleRange[1]) return false;
+    if (t.cost_per_min_working < workingRange[0] || t.cost_per_min_working > workingRange[1]) return false;
+    return true;
+  });
 
   useEffect(() => { if (view !== "list") sel.clear(); }, [view]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -879,7 +927,13 @@ export default function ToolsPage() {
     <>
       <ModuleLayout title="Tools" subNav={SUB_NAV} activeView={view} onViewChange={setView} onBackgroundClick={view === "list" ? sel.clear : undefined}>
         {view === "list" && (
-          <ToolList tools={tools} onEdit={openEdit} onDelete={deleteOne} sel={sel} onAdd={openAdd} />
+          <ToolList
+            tools={filteredTools} onEdit={openEdit} onDelete={deleteOne} sel={sel} onAdd={openAdd}
+            search={search} onSearchChange={setSearch}
+            idleRange={idleRange} onIdleRangeChange={setIdleRange}
+            workingRange={workingRange} onWorkingRangeChange={setWorkingRange}
+            allTools={tools}
+          />
         )}
         {view === "service-book" && (
           <ServiceBook tools={tools} records={records} onAdd={r => setRecords(p => [r, ...p])} />

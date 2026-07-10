@@ -7,6 +7,8 @@ import { useSelection } from "@/hooks/useSelection";
 import { SelectCheckbox } from "@/components/ui/select-checkbox";
 import { RowActions } from "@/components/ui/row-actions";
 import { BulkActionBar } from "@/components/ui/bulk-action-bar";
+import { SectionFilter } from "@/components/ui/section-filter";
+import { RangeHistogram } from "@/components/ui/range-histogram";
 import { exportToCsv } from "@/lib/csv-export";
 
 type StockType = "all" | "outsourced" | "internal";
@@ -44,12 +46,16 @@ export default function InventoryPage() {
   const [editingPart, setEditingPart] = useState<Part | null>(null);
   const [hoveredId,  setHoveredId]  = useState<string | null>(null);
 
+  const [qtyRange,  setQtyRange]  = useState<[number, number]>([0, 999]);
+  const [costRange, setCostRange] = useState<[number, number]>([0, 9999]);
   const sel = useSelection<string>();
 
   const filtered = items.filter((item) => {
     if (typeFilter === "outsourced" && item.type !== "Out Sourced") return false;
     if (typeFilter === "internal"   && item.type !== "Internally Manufactured") return false;
     if (search && !item.name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (item.qty < qtyRange[0] || item.qty > qtyRange[1]) return false;
+    if (item.cost < costRange[0] || item.cost > costRange[1]) return false;
     return true;
   });
 
@@ -102,6 +108,35 @@ export default function InventoryPage() {
     <div style={s.page} onClick={(e) => { if (e.target === e.currentTarget) sel.clear(); }}>
       <div style={s.topBar}>
         <div style={{ flex: 1 }} />
+        <SectionFilter
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search parts..."
+          active={typeFilter !== "all" || qtyRange[0] > 0 || qtyRange[1] < 999 || costRange[0] > 0 || costRange[1] < 9999}
+        >
+          <RangeHistogram
+            label="Qty in Stock"
+            values={items.map(i => i.qty)}
+            min={0} max={Math.max(...items.map(i => i.qty), 100)}
+            value={qtyRange}
+            onChange={setQtyRange}
+          />
+          <RangeHistogram
+            label="Cost Price"
+            values={items.map(i => i.cost)}
+            min={0} max={Math.max(...items.map(i => i.cost), 100)}
+            value={costRange}
+            onChange={setCostRange}
+            format={(n) => `R${n}`}
+          />
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Stock Item Type</span>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              <FilterChip label="Out Sourced"             active={typeFilter === "outsourced"} onClick={() => setTypeFilter(typeFilter === "outsourced" ? "all" : "outsourced")} />
+              <FilterChip label="Internally Manufactured" active={typeFilter === "internal"}   onClick={() => setTypeFilter(typeFilter === "internal"   ? "all" : "internal")}   />
+            </div>
+          </div>
+        </SectionFilter>
         <div style={s.btnGroup}>
           <button style={s.addBtn} onClick={() => { setEditingPart(null); setActiveForm(activeForm === "os" ? null : "os"); }}>
             <Plus size={14} strokeWidth={2.5} /> OS Part
@@ -113,16 +148,6 @@ export default function InventoryPage() {
       </div>
 
       <div style={s.card}>
-        <FilterSection label="Filter Stock Item Type">
-          <FilterChip label="Out Sourced"             active={typeFilter === "outsourced"} onClick={() => setTypeFilter(typeFilter === "outsourced" ? "all" : "outsourced")} />
-          <FilterChip label="Internally Manufactured" active={typeFilter === "internal"}   onClick={() => setTypeFilter(typeFilter === "internal"   ? "all" : "internal")}   />
-        </FilterSection>
-
-        <div style={s.searchRow}>
-          <input value={search} onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search..." style={s.search} />
-        </div>
-
         <div style={s.tableWrap}>
           <table style={s.table}>
             <thead>
@@ -423,15 +448,6 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
     <button onClick={() => onChange(!on)} style={{ ...f.toggle, ...(on ? f.toggleOn : {}) }}>
       <span style={{ ...f.toggleThumb, ...(on ? f.toggleThumbOn : {}) }} />
     </button>
-  );
-}
-
-function FilterSection({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={s.filterSection}>
-      <div style={s.filterHeader}><span style={s.filterLabel}>{label}</span></div>
-      <div style={s.filterChips}>{children}</div>
-    </div>
   );
 }
 

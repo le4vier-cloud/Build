@@ -10,6 +10,7 @@ import { useSelection } from "@/hooks/useSelection";
 import { SelectCheckbox } from "@/components/ui/select-checkbox";
 import { RowActions } from "@/components/ui/row-actions";
 import { BulkActionBar } from "@/components/ui/bulk-action-bar";
+import { SectionFilter } from "@/components/ui/section-filter";
 import { exportToCsv } from "@/lib/csv-export";
 
 /* ── Types ──────────────────────────────────────────────── */
@@ -98,8 +99,13 @@ export default function SuppliersPage() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(BLANK_FORM);
+  const [search, setSearch] = useState("");
   const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }));
   const sel = useSelection<string>();
+
+  const filtered = suppliers.filter(sup =>
+    !search || sup.name.toLowerCase().includes(search.toLowerCase()) || sup.address.toLowerCase().includes(search.toLowerCase())
+  );
 
   function openAdd() {
     setEditingId(null);
@@ -153,11 +159,13 @@ export default function SuppliersPage() {
       <ModuleLayout title="Suppliers" subNav={SUB_NAV} activeView={view} onViewChange={setView} onBackgroundClick={sel.clear}>
         {view === "list" && (
           <SupplierList
-            suppliers={suppliers}
+            suppliers={filtered}
             onAdd={openAdd}
             onEdit={openEdit}
             onDelete={deleteOne}
             sel={sel}
+            search={search}
+            onSearchChange={setSearch}
           />
         )}
         {view === "map" && (
@@ -212,18 +220,24 @@ export default function SuppliersPage() {
 }
 
 /* ── Supplier list ──────────────────────────────────────── */
-function SupplierList({ suppliers, onAdd, onEdit, onDelete, sel }: {
+function SupplierList({ suppliers, onAdd, onEdit, onDelete, sel, search, onSearchChange }: {
   suppliers: Supplier[];
   onAdd: () => void;
   onEdit: (s: Supplier) => void;
   onDelete: (id: string) => void;
   sel: ReturnType<typeof useSelection<string>>;
+  search: string;
+  onSearchChange: (v: string) => void;
 }) {
   return (
     <div
       style={{ display: "flex", flexDirection: "column", gap: 10 }}
       onClick={(e) => { if (e.target === e.currentTarget) sel.clear(); }}
     >
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <SectionFilter search={search} onSearchChange={onSearchChange} searchPlaceholder="Search suppliers..." />
+      </div>
+
       {suppliers.length === 0 && (
         <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>No suppliers yet.</p>
       )}
