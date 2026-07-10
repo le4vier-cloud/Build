@@ -894,7 +894,7 @@ export default function ToolsPage() {
         <AddToolForm initial={editingTool} onSave={handleSaveTool} />
       </RightPanel>
 
-      {view === "list" && (
+      {view === "list" && !panelOpen && (
         <BulkActionBar
           count={sel.count}
           entityLabel="tool"

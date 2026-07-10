@@ -185,14 +185,16 @@ export default function InventoryPage() {
       {activeForm === "os" && <AddOSPartForm initial={editingPart} onClose={closeForm} onSave={handleSavePart} />}
       {activeForm === "im" && <AddIMPartForm initial={editingPart} onClose={closeForm} onSave={handleSavePart} />}
 
-      <BulkActionBar
-        count={sel.count}
-        entityLabel="part"
-        onEdit={sel.count === 1 ? editSelected : undefined}
-        onExport={exportSelected}
-        onDelete={deleteSelected}
-        onClear={sel.clear}
-      />
+      {!activeForm && (
+        <BulkActionBar
+          count={sel.count}
+          entityLabel="part"
+          onEdit={sel.count === 1 ? editSelected : undefined}
+          onExport={exportSelected}
+          onDelete={deleteSelected}
+          onClear={sel.clear}
+        />
+      )}
     </div>
     </ModuleLayout>
   );

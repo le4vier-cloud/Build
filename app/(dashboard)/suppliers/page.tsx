@@ -197,14 +197,16 @@ export default function SuppliersPage() {
         </div>
       </RightPanel>
 
-      <BulkActionBar
-        count={sel.count}
-        entityLabel="supplier"
-        onEdit={sel.count === 1 ? editSelected : undefined}
-        onExport={exportSelected}
-        onDelete={deleteSelected}
-        onClear={sel.clear}
-      />
+      {!panelOpen && (
+        <BulkActionBar
+          count={sel.count}
+          entityLabel="supplier"
+          onEdit={sel.count === 1 ? editSelected : undefined}
+          onExport={exportSelected}
+          onDelete={deleteSelected}
+          onClear={sel.clear}
+        />
+      )}
     </>
   );
 }
