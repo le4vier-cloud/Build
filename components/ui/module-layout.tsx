@@ -15,9 +15,10 @@ interface ModuleLayoutProps {
   activeView: string | null;
   onViewChange: (key: string) => void;
   children: React.ReactNode;
+  onBackgroundClick?: () => void;
 }
 
-export function ModuleLayout({ title, subNav, activeView, onViewChange, children }: ModuleLayoutProps) {
+export function ModuleLayout({ title, subNav, activeView, onViewChange, children, onBackgroundClick }: ModuleLayoutProps) {
   const { setLocked, setHovered } = useSidebar();
 
   function handleTabClick(key: string) {
@@ -84,7 +85,10 @@ export function ModuleLayout({ title, subNav, activeView, onViewChange, children
           );
         })}
       </div>
-      <div style={{ flex: 1, overflowY: "auto", padding: 24, backgroundColor: "var(--bg)" }}>
+      <div
+        style={{ flex: 1, overflowY: "auto", padding: 24, backgroundColor: "var(--bg)" }}
+        onClick={(e) => { if (e.target === e.currentTarget) onBackgroundClick?.(); }}
+      >
         {children}
       </div>
     </div>

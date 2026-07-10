@@ -175,7 +175,10 @@ function ToolList({ tools, onEdit, onDelete, sel, onAdd }: {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 680 }}>
+    <div
+      style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 680 }}
+      onClick={(e) => { if (e.target === e.currentTarget) sel.clear(); }}
+    >
       {tools.length === 0 && (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "48px 0", color: "var(--text-tertiary)" }}>
           <Scissors size={32} strokeWidth={1.2} />
@@ -874,7 +877,7 @@ export default function ToolsPage() {
 
   return (
     <>
-      <ModuleLayout title="Tools" subNav={SUB_NAV} activeView={view} onViewChange={setView}>
+      <ModuleLayout title="Tools" subNav={SUB_NAV} activeView={view} onViewChange={setView} onBackgroundClick={view === "list" ? sel.clear : undefined}>
         {view === "list" && (
           <ToolList tools={tools} onEdit={openEdit} onDelete={deleteOne} sel={sel} onAdd={openAdd} />
         )}

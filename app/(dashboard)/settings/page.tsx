@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Building2, Palette, Bell, CreditCard, Check } from "lucide-react";
 import { ModuleLayout } from "@/components/ui/module-layout";
+import { useTheme } from "@/hooks/useTheme";
 
 const SUB_NAV = [
   { key: "company",       label: "Company",      icon: <Building2 size={15} strokeWidth={1.8} /> },
@@ -97,7 +98,7 @@ function CompanySettings() {
 
 /* ── Appearance ───────────────────────────────── */
 function AppearanceSettings() {
-  const [theme, setTheme] = useState<"system" | "light" | "dark">("dark");
+  const { theme, setTheme } = useTheme();
   const [density, setDensity] = useState<"comfortable" | "compact">("comfortable");
 
   return (
@@ -221,7 +222,7 @@ const PLANS = [
     key: "minimal",
     name: "MINIMAL",
     price: "R 650",
-    accent: "var(--text-primary)",
+    highlight: false,
     features: ["1 user", "Up to 5 products", "50 orders/mo", "Email support"],
     cta: "Current plan",
     current: true,
@@ -230,7 +231,7 @@ const PLANS = [
     key: "basic",
     name: "BASIC",
     price: "R 3,000",
-    accent: "#C9A84C",
+    highlight: true,
     features: ["5 users", "Up to 30 products", "500 orders/mo", "Priority support"],
     cta: "Upgrade to Basic",
     current: false,
@@ -239,7 +240,7 @@ const PLANS = [
     key: "professional",
     name: "PROFESSIONAL",
     price: "R 8,000",
-    accent: "var(--text-primary)",
+    highlight: false,
     features: ["Unlimited users", "Unlimited products", "Unlimited orders", "Dedicated support + SLA"],
     cta: "Upgrade to Professional",
     current: false,
@@ -270,25 +271,25 @@ function PlanSettings() {
             }}
           >
             <span style={{
-              fontSize: 10,
+              fontSize: 11,
               fontWeight: 700,
-              letterSpacing: "0.14em",
+              letterSpacing: "0.1em",
               color: "var(--text-tertiary)",
               textTransform: "uppercase",
               marginBottom: 16,
             }}>
               {plan.name}
               {plan.current && (
-                <span style={{ marginLeft: 8, color: "#C9A84C" }}>✦</span>
+                <span style={{ marginLeft: 8, color: "var(--accent)" }}>✦</span>
               )}
             </span>
 
             <div style={{ display: "flex", alignItems: "baseline", gap: 0, marginBottom: 32 }}>
               <span style={{
-                fontSize: 44,
-                fontWeight: 800,
-                color: plan.accent,
-                letterSpacing: "-0.03em",
+                fontSize: 36,
+                fontWeight: 700,
+                color: plan.highlight ? "var(--accent)" : "var(--text-primary)",
+                letterSpacing: "-0.02em",
                 lineHeight: 1,
               }}>
                 {plan.price}
@@ -298,8 +299,8 @@ function PlanSettings() {
 
             <ul style={{ margin: "0 0 28px", padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
               {plan.features.map(f => (
-                <li key={f} style={{ fontSize: 12, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 8 }}>
-                  <Check size={11} color={plan.current ? "var(--text-tertiary)" : "#C9A84C"} strokeWidth={2.5} />
+                <li key={f} style={{ fontSize: 13, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 8 }}>
+                  <Check size={13} color={plan.current ? "var(--text-tertiary)" : "var(--accent)"} strokeWidth={2} />
                   {f}
                 </li>
               ))}
@@ -307,15 +308,14 @@ function PlanSettings() {
 
             <button style={{
               marginTop: "auto",
-              height: 34,
-              backgroundColor: plan.current ? "transparent" : plan.accent === "#C9A84C" ? "#C9A84C" : "var(--bg)",
-              color: plan.current ? "var(--text-tertiary)" : plan.accent === "#C9A84C" ? "#0F0F0F" : "var(--text-primary)",
-              border: plan.current ? "1px solid var(--border)" : "none",
-              borderRadius: 6,
-              fontSize: 12,
-              fontWeight: 700,
+              height: 38,
+              backgroundColor: plan.current ? "transparent" : plan.highlight ? "var(--btn-primary)" : "var(--bg)",
+              color: plan.current ? "var(--text-tertiary)" : plan.highlight ? "var(--btn-primary-text, #fff)" : "var(--text-primary)",
+              border: plan.current || !plan.highlight ? "1px solid var(--border)" : "none",
+              borderRadius: "var(--radius-full, 9999px)",
+              fontSize: 13,
+              fontWeight: 600,
               cursor: plan.current ? "default" : "pointer",
-              letterSpacing: "0.02em",
             }}>
               {plan.cta}
             </button>

@@ -5,6 +5,13 @@ import { CalendarDays, Plus, Calendar } from "lucide-react";
 import { ModuleLayout } from "@/components/ui/module-layout";
 import { RightPanel } from "@/components/ui/right-panel";
 import { MultiInput } from "@/components/ui/multi-input";
+import { SectionFilter } from "@/components/ui/section-filter";
+import { RangeHistogram } from "@/components/ui/range-histogram";
+import { useSelection } from "@/hooks/useSelection";
+import { SelectCheckbox } from "@/components/ui/select-checkbox";
+import { RowActions } from "@/components/ui/row-actions";
+import { BulkActionBar } from "@/components/ui/bulk-action-bar";
+import { exportToCsv } from "@/lib/csv-export";
 
 const SUB_NAV = [
   { key: "list",     label: "Orders",         icon: <CalendarDays size={15} strokeWidth={1.8} /> },
@@ -12,18 +19,44 @@ const SUB_NAV = [
   { key: "annual",   label: "Annual Calendar",icon: <Calendar     size={15} strokeWidth={1.8} /> },
 ];
 
-const MOCK_ORDERS = [
+type Order = {
+  id: string; client: string; product: string;
+  status: string; progress: number;
+  email: string; cell: string; address: string;
+  start: string; end: string;
+};
+
+const MOCK_ORDERS: Order[] = [
   {
     id: "1", client: "Divan Oelerman", product: "Ingane - 1.0",
-    status: "In Progress", progress: 0, email: "divanoelerman@gmail.com",
-    cell: "0987645634", address: "Still Bay West", start: "Mon 25 August, 2025", end: "Thu 14 May, 2026",
+    status: "In Progress", progress: 35, email: "divanoelerman@gmail.com",
+    cell: "098 764 5634", address: "Still Bay West", start: "Mon 25 August, 2025", end: "Thu 14 May, 2026",
+  },
+  {
+    id: "2", client: "Marlene Kruger", product: "Ingane - 1.0",
+    status: "Completed", progress: 100, email: "marlene.k@gmail.com",
+    cell: "082 456 7890", address: "Cape Town", start: "Mon 3 March, 2025", end: "Fri 20 June, 2025",
+  },
+  {
+    id: "3", client: "Riaan Botha", product: "Standard Build",
+    status: "Awaiting Parts", progress: 10, email: "riaan.botha@outlook.com",
+    cell: "083 112 2334", address: "Worcester", start: "Mon 6 January, 2026", end: "Fri 10 July, 2026",
+  },
+  {
+    id: "4", client: "Sarah Naidoo", product: "Ingane - 1.0",
+    status: "In Progress", progress: 62, email: "sarah.naidoo@gmail.com",
+    cell: "071 998 4432", address: "Stellenbosch", start: "Mon 12 January, 2026", end: "Fri 8 May, 2026",
   },
 ];
 
 export default function OrdersPage() {
   const [view, setView]           = useState("list");
+  const [orders, setOrders]       = useState<Order[]>(MOCK_ORDERS);
   const [panelOpen, setPanelOpen] = useState(false);
   const [newClientMode, setNewClientMode] = useState(false);
+  const [search, setSearch]       = useState("");
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [progressRange, setProgressRange] = useState<[number, number]>([0, 100]);
   const [form, setForm] = useState({
     client_id: "", new_client_name: "", new_client_address: "",
     new_client_emails: [] as string[], new_client_cells: [] as string[],
@@ -31,15 +64,59 @@ export default function OrdersPage() {
     start_date: "", end_date: "",
   });
   const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
+  const sel = useSelection<string>();
+
+  const statuses = Array.from(new Set(orders.map(o => o.status)));
+
+  const filtered = orders.filter(o => {
+    if (search && !`${o.client} ${o.product}`.toLowerCase().includes(search.toLowerCase())) return false;
+    if (statusFilter && o.status !== statusFilter) return false;
+    if (o.progress < progressRange[0] || o.progress > progressRange[1]) return false;
+    return true;
+  });
 
   function handleSave() {
     setPanelOpen(false);
   }
 
+  function deleteOne(id: string) {
+    if (!window.confirm("Delete this order?")) return;
+    setOrders(prev => prev.filter(o => o.id !== id));
+    sel.clear();
+  }
+
+  function deleteSelected() {
+    setOrders(prev => prev.filter(o => !sel.isSelected(o.id)));
+    sel.clear();
+  }
+
+  function exportSelected() {
+    const rows = orders.filter(o => sel.isSelected(o.id));
+    exportToCsv("orders", rows.map(o => ({
+      Client: o.client, Product: o.product, Status: o.status, Progress: o.progress,
+      Email: o.email, Cell: o.cell, Address: o.address, Start: o.start, End: o.end,
+    })));
+  }
+
   return (
     <>
-      <ModuleLayout title="Orders" subNav={SUB_NAV} activeView={view} onViewChange={setView}>
-        {view === "list"     && <OrderList onAdd={() => setPanelOpen(true)} />}
+      <ModuleLayout title="Orders" subNav={SUB_NAV} activeView={view} onViewChange={setView} onBackgroundClick={view === "list" ? sel.clear : undefined}>
+        {view === "list"     && (
+          <OrderList
+            orders={filtered}
+            onAdd={() => setPanelOpen(true)}
+            onDelete={deleteOne}
+            sel={sel}
+            search={search}
+            onSearchChange={setSearch}
+            statuses={statuses}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+            progressRange={progressRange}
+            onProgressRangeChange={setProgressRange}
+            allProgress={orders.map(o => o.progress)}
+          />
+        )}
         {view === "calendar" && <CalendarView />}
         {view === "annual"   && <AnnualCalendarView />}
       </ModuleLayout>
@@ -90,35 +167,92 @@ export default function OrdersPage() {
           <button onClick={handleSave} style={s.saveBtn}>Save</button>
         </div>
       </RightPanel>
+
+      {!panelOpen && (
+        <BulkActionBar
+          count={sel.count}
+          entityLabel="order"
+          onExport={exportSelected}
+          onDelete={deleteSelected}
+          onClear={sel.clear}
+        />
+      )}
     </>
   );
 }
 
 /* ── Order List ─────────────────────────────────────── */
-function OrderList({ onAdd }: { onAdd: () => void }) {
-  const [selected, setSelected] = useState<string | null>(null);
-  const order = MOCK_ORDERS.find((o) => o.id === selected);
+function OrderList({
+  orders, onAdd, onDelete, sel, search, onSearchChange,
+  statuses, statusFilter, onStatusFilterChange, progressRange, onProgressRangeChange, allProgress,
+}: {
+  orders: Order[];
+  onAdd: () => void;
+  onDelete: (id: string) => void;
+  sel: ReturnType<typeof useSelection<string>>;
+  search: string;
+  onSearchChange: (v: string) => void;
+  statuses: string[];
+  statusFilter: string | null;
+  onStatusFilterChange: (v: string | null) => void;
+  progressRange: [number, number];
+  onProgressRangeChange: (v: [number, number]) => void;
+  allProgress: number[];
+}) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const openOrder = orders.find((o) => o.id === openId);
 
-  if (selected && order) {
-    return <OrderDetail order={order} onBack={() => setSelected(null)} />;
+  if (openId && openOrder) {
+    return <OrderDetail order={openOrder} onBack={() => setOpenId(null)} />;
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <input placeholder="Search..." style={s.search} />
-      {MOCK_ORDERS.map((o) => (
-        <div key={o.id} style={s.orderCard} onClick={() => setSelected(o.id)}>
-          <div style={s.orderTop}>
-            <span style={s.orderClient}>{o.client}</span>
-            <ProgressRing pct={o.progress} />
+    <div
+      style={{ display: "flex", flexDirection: "column", gap: 16 }}
+      onClick={(e) => { if (e.target === e.currentTarget) sel.clear(); }}
+    >
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <SectionFilter
+          search={search}
+          onSearchChange={onSearchChange}
+          searchPlaceholder="Search client or product..."
+          active={!!statusFilter || progressRange[0] > 0 || progressRange[1] < 100}
+        >
+          <RangeHistogram
+            label="Progress"
+            values={allProgress}
+            min={0} max={100}
+            value={progressRange}
+            onChange={onProgressRangeChange}
+            format={(n) => `${n}%`}
+          />
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Status</span>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {statuses.map(st => (
+                <button
+                  key={st}
+                  onClick={() => onStatusFilterChange(statusFilter === st ? null : st)}
+                  style={{
+                    padding: "5px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                    border: `1px solid ${statusFilter === st ? "var(--accent)" : "var(--border)"}`,
+                    backgroundColor: statusFilter === st ? "var(--accent)" : "transparent",
+                    color: statusFilter === st ? "#fff" : "var(--text-secondary)",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  {st}
+                </button>
+              ))}
+            </div>
           </div>
-          <div style={s.orderMeta}>
-            <span>Email: {o.email}</span>
-            <span>Cell: {o.cell}</span>
-            <span>Address: {o.address}</span>
-          </div>
-        </div>
+        </SectionFilter>
+      </div>
+
+      {orders.map((o) => (
+        <OrderCard key={o.id} order={o} onOpen={() => setOpenId(o.id)} onDelete={onDelete} sel={sel} />
       ))}
+
       <button
         onClick={onAdd}
         style={{
@@ -132,6 +266,43 @@ function OrderList({ onAdd }: { onAdd: () => void }) {
       >
         <Plus size={15} /> Add Order
       </button>
+    </div>
+  );
+}
+
+function OrderCard({ order, onOpen, onDelete, sel }: {
+  order: Order;
+  onOpen: () => void;
+  onDelete: (id: string) => void;
+  sel: ReturnType<typeof useSelection<string>>;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const selected = sel.isSelected(order.id);
+
+  return (
+    <div
+      style={s.orderCard}
+      onClick={onOpen}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <SelectCheckbox checked={selected} visible={hovered || sel.count > 0} onChange={() => sel.toggle(order.id)} />
+        <div style={{ flex: 1 }}>
+          <div style={s.orderTop}>
+            <span style={s.orderClient}>{order.client}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <RowActions visible={hovered} onDelete={() => onDelete(order.id)} />
+              <ProgressRing pct={order.progress} />
+            </div>
+          </div>
+          <div style={s.orderMeta}>
+            <span>Email: {order.email}</span>
+            <span>Cell: {order.cell}</span>
+            <span>Address: {order.address}</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -151,7 +322,7 @@ function ProgressRing({ pct }: { pct: number }) {
 }
 
 /* ── Order Detail ───────────────────────────────────── */
-function OrderDetail({ order, onBack }: { order: typeof MOCK_ORDERS[0]; onBack: () => void }) {
+function OrderDetail({ order, onBack }: { order: Order; onBack: () => void }) {
   return (
     <div>
       <div style={s.detailHeader}>

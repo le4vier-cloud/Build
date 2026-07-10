@@ -10,6 +10,13 @@ import {
 } from "lucide-react";
 import { ModuleLayout } from "@/components/ui/module-layout";
 import { RightPanel } from "@/components/ui/right-panel";
+import { SectionFilter } from "@/components/ui/section-filter";
+import { RangeHistogram } from "@/components/ui/range-histogram";
+import { useSelection } from "@/hooks/useSelection";
+import { SelectCheckbox } from "@/components/ui/select-checkbox";
+import { RowActions } from "@/components/ui/row-actions";
+import { BulkActionBar } from "@/components/ui/bulk-action-bar";
+import { exportToCsv } from "@/lib/csv-export";
 import type {
   HardwareAuthType, HardwareCredential, ClockEvent, Shift, StaffMember,
   ClockEventType, ShiftStatus, StaffRole,
@@ -194,6 +201,36 @@ function ShiftPill({ status }: { status: ShiftStatus }) {
     }}>
       {cfg.label}
     </span>
+  );
+}
+
+function FilterChipRow({ label, options, value, onChange }: {
+  label: string;
+  options: { value: string; label: string }[];
+  value: string | null;
+  onChange: (v: string | null) => void;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</span>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {options.map(opt => (
+          <button
+            key={opt.value}
+            onClick={() => onChange(value === opt.value ? null : opt.value)}
+            style={{
+              padding: "5px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: "pointer",
+              border: `1px solid ${value === opt.value ? "var(--accent)" : "var(--border)"}`,
+              backgroundColor: value === opt.value ? "var(--accent)" : "transparent",
+              color: value === opt.value ? "#fff" : "var(--text-secondary)",
+              transition: "all 0.15s",
+            }}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -594,29 +631,83 @@ function RolesModal({ onClose }: { onClose: () => void }) {
 }
 
 /* ── Staff List ───────────────────────────────────────────────────── */
-function StaffList({ onAddStaff }: { onAddStaff: () => void }) {
+function StaffList({
+  staff, allStaff, onAddStaff, onEdit, onDelete, sel,
+  search, onSearchChange, roleFilter, onRoleFilterChange,
+  activeFilter, onActiveFilterChange, wageRange, onWageRangeChange,
+}: {
+  staff: StaffMember[];
+  allStaff: StaffMember[];
+  onAddStaff: () => void;
+  onEdit: (s: StaffMember) => void;
+  onDelete: (id: string) => void;
+  sel: ReturnType<typeof useSelection<string>>;
+  search: string;
+  onSearchChange: (v: string) => void;
+  roleFilter: string | null;
+  onRoleFilterChange: (v: string | null) => void;
+  activeFilter: boolean | null;
+  onActiveFilterChange: (v: boolean | null) => void;
+  wageRange: [number, number];
+  onWageRangeChange: (v: [number, number]) => void;
+}) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showRoles, setShowRoles]   = useState(false);
+  const [hoveredId, setHoveredId]   = useState<string | null>(null);
   const credsByStaff = (sid: string) => MOCK_CREDS.filter((c) => c.staff_id === sid);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div
+      style={{ display: "flex", flexDirection: "column", gap: 16 }}
+      onClick={(e) => { if (e.target === e.currentTarget) sel.clear(); }}
+    >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-          {MOCK_STAFF.length} staff members
+          {staff.length} staff members
         </span>
-        <button
-          onClick={() => setShowRoles(true)}
-          style={{ ...btn.ghost, display: "flex", alignItems: "center", gap: 6 }}
-        >
-          <SlidersHorizontal size={14} /> Manage Roles
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <button
+            onClick={() => setShowRoles(true)}
+            style={{ ...btn.ghost, display: "flex", alignItems: "center", gap: 6 }}
+          >
+            <SlidersHorizontal size={14} /> Manage Roles
+          </button>
+          <SectionFilter
+            search={search}
+            onSearchChange={onSearchChange}
+            searchPlaceholder="Search name or email..."
+            active={!!roleFilter || activeFilter !== null || wageRange[0] > 0 || wageRange[1] < 999}
+          >
+            <RangeHistogram
+              label="Hourly Wage"
+              values={allStaff.map(s => s.hourly_wage)}
+              min={0} max={Math.max(...allStaff.map(s => s.hourly_wage), 100)}
+              value={wageRange}
+              onChange={onWageRangeChange}
+              format={(n) => `R${n}`}
+            />
+            <FilterChipRow
+              label="Role"
+              options={[{ value: "back_end", label: "Back End" }, { value: "front_end", label: "Front End" }]}
+              value={roleFilter}
+              onChange={onRoleFilterChange}
+            />
+            <FilterChipRow
+              label="Status"
+              options={[{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }]}
+              value={activeFilter === null ? null : (activeFilter ? "active" : "inactive")}
+              onChange={(v) => onActiveFilterChange(v === null ? null : v === "active")}
+            />
+          </SectionFilter>
+        </div>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {MOCK_STAFF.map((staff) => {
+        {staff.map((staff) => {
           const creds    = credsByStaff(staff.id);
           const expanded = expandedId === staff.id;
+          const selected = sel.isSelected(staff.id);
+          const hovered  = hoveredId === staff.id;
           return (
             <div key={staff.id} style={{
               border: "1px solid var(--border)", borderRadius: 10,
@@ -624,8 +715,11 @@ function StaffList({ onAddStaff }: { onAddStaff: () => void }) {
             }}>
               <div
                 onClick={() => setExpandedId(expanded ? null : staff.id)}
+                onMouseEnter={() => setHoveredId(staff.id)}
+                onMouseLeave={() => setHoveredId(null)}
                 style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", cursor: "pointer" }}
               >
+                <SelectCheckbox checked={selected} visible={hovered || sel.count > 0} onChange={() => sel.toggle(staff.id)} />
                 <div style={{
                   width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
                   backgroundColor: "var(--bg)", border: "1px solid var(--border)",
@@ -634,23 +728,23 @@ function StaffList({ onAddStaff }: { onAddStaff: () => void }) {
                 }}>
                   {initials(staff.name)}
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: 14 }}>{staff.name}</div>
-                  <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{staff.email}</div>
+                <div style={{ flex: 1, minWidth: 120 }}>
+                  <div style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{staff.name}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-tertiary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{staff.email}</div>
                 </div>
-                <span style={{ width: 90, fontSize: 12, color: "var(--text-secondary)" }}>
+                <span style={{ width: 90, flexShrink: 0, fontSize: 12, color: "var(--text-secondary)" }}>
                   {staff.user_role === "back_end" ? "Back End" : "Front End"}
                 </span>
-                <span style={{ width: 80, fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 }}>
+                <span style={{ width: 80, flexShrink: 0, fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 }}>
                   R{staff.hourly_wage}/hr
                 </span>
-                <div style={{ display: "flex", gap: 4, width: 110, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 4, width: 110, flexShrink: 0, flexWrap: "wrap" }}>
                   {creds.length === 0
                     ? <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>No credentials</span>
                     : creds.map((c) => <CredBadge key={c.id} type={c.auth_type} />)}
                 </div>
                 <span style={{
-                  display: "inline-block", padding: "2px 8px", borderRadius: 999,
+                  display: "inline-block", padding: "2px 8px", borderRadius: 999, flexShrink: 0,
                   fontSize: 11, fontWeight: 600, width: 66,
                   backgroundColor: staff.is_active ? "#3CC86A22" : "#E55F1F22",
                   border: `1px solid ${staff.is_active ? "#3CC86A55" : "#E55F1F55"}`,
@@ -658,6 +752,7 @@ function StaffList({ onAddStaff }: { onAddStaff: () => void }) {
                 }}>
                   {staff.is_active ? "Active" : "Inactive"}
                 </span>
+                <RowActions visible={hovered} onEdit={() => onEdit(staff)} onDelete={() => onDelete(staff.id)} style={{ flexShrink: 0 }} />
                 <span style={{ color: "var(--text-tertiary)", flexShrink: 0 }}>
                   {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                 </span>
@@ -739,16 +834,29 @@ function StaffList({ onAddStaff }: { onAddStaff: () => void }) {
 }
 
 /* ── Add Staff Form (panel content) ──────────────────────────────── */
-function AddStaffForm({ onClose }: { onClose: () => void }) {
+function AddStaffForm({ initial, onSave }: { initial?: StaffMember | null; onSave: (s: StaffMember) => void }) {
+  const isEdit = !!initial;
   const [form, setForm] = useState({
-    name: "", email: "", password: "",
-    hourly_wage: "", user_role: "front_end",
+    name: initial?.name ?? "", email: initial?.email ?? "", password: "",
+    hourly_wage: initial ? String(initial.hourly_wage) : "",
+    user_role: initial?.user_role ?? "front_end",
   });
   const [pendingCreds, setPendingCreds] = useState<PendingCred[]>([]);
   const upd = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   function handleSubmit() {
-    onClose();
+    if (!form.name.trim() || !form.email.trim()) return;
+    onSave({
+      id: initial?.id ?? `s${Date.now()}`,
+      org_id: initial?.org_id ?? "org1",
+      name: form.name.trim(),
+      email: form.email.trim(),
+      hourly_wage: parseFloat(form.hourly_wage) || 0,
+      user_role: form.user_role as StaffMember["user_role"],
+      staff_role_ids: initial?.staff_role_ids ?? [],
+      is_active: initial?.is_active ?? true,
+      created_at: initial?.created_at ?? new Date().toISOString(),
+    });
   }
 
   return (
@@ -765,7 +873,7 @@ function AddStaffForm({ onClose }: { onClose: () => void }) {
 
       <Field label="Full Name *"       value={form.name}        onChange={(v) => upd("name", v)}        placeholder="Jane Smith" />
       <Field label="Email *"           value={form.email}       onChange={(v) => upd("email", v)}       placeholder="jane@company.com" type="email" />
-      <Field label="Password *"        value={form.password}    onChange={(v) => upd("password", v)}    placeholder="••••••••" type="password" />
+      <Field label={isEdit ? "New Password" : "Password *"} value={form.password} onChange={(v) => upd("password", v)} placeholder={isEdit ? "Leave blank to keep current" : "••••••••"} type="password" />
       <Field label="Hourly Wage (R) *" value={form.hourly_wage} onChange={(v) => upd("hourly_wage", v)} placeholder="85" type="number" />
 
       <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.1em", marginTop: 4 }}>
@@ -794,8 +902,8 @@ function AddStaffForm({ onClose }: { onClose: () => void }) {
         <CredentialEnrollment credentials={pendingCreds} onChange={setPendingCreds} />
       </div>
 
-      <button onClick={handleSubmit} style={{ ...btn.primary, marginTop: 8 }}>
-        Add Staff Member
+      <button onClick={handleSubmit} disabled={!form.name.trim() || !form.email.trim()} style={{ ...btn.primary, marginTop: 8, opacity: !form.name.trim() || !form.email.trim() ? 0.45 : 1 }}>
+        {isEdit ? "Save Changes" : "Add Staff Member"}
       </button>
     </div>
   );
@@ -1037,18 +1145,89 @@ const SUB_NAV = [
 
 export default function StaffPage() {
   const [view, setView]         = useState("list");
+  const [staff, setStaff]       = useState<StaffMember[]>(MOCK_STAFF);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
+  const [search, setSearch]     = useState("");
+  const [roleFilter, setRoleFilter]     = useState<string | null>(null);
+  const [activeFilter, setActiveFilter] = useState<boolean | null>(null);
+  const [wageRange, setWageRange] = useState<[number, number]>([0, 999]);
+  const sel = useSelection<string>();
+
+  const filtered = staff.filter(m => {
+    if (search && !`${m.name} ${m.email}`.toLowerCase().includes(search.toLowerCase())) return false;
+    if (roleFilter && m.user_role !== roleFilter) return false;
+    if (activeFilter !== null && m.is_active !== activeFilter) return false;
+    if (m.hourly_wage < wageRange[0] || m.hourly_wage > wageRange[1]) return false;
+    return true;
+  });
+
+  function openAdd() { setEditingStaff(null); setPanelOpen(true); }
+  function openEdit(m: StaffMember) { setEditingStaff(m); setPanelOpen(true); }
+
+  function handleSaveStaff(m: StaffMember) {
+    setStaff(prev => {
+      const exists = prev.some(x => x.id === m.id);
+      return exists ? prev.map(x => x.id === m.id ? m : x) : [...prev, m];
+    });
+    setPanelOpen(false);
+    setEditingStaff(null);
+  }
+
+  function deleteOne(id: string) {
+    if (!window.confirm("Remove this staff member?")) return;
+    setStaff(prev => prev.filter(m => m.id !== id));
+    sel.clear();
+  }
+
+  function deleteSelected() {
+    setStaff(prev => prev.filter(m => !sel.isSelected(m.id)));
+    sel.clear();
+  }
+
+  function exportSelected() {
+    const rows = staff.filter(m => sel.isSelected(m.id));
+    exportToCsv("staff", rows.map(m => ({
+      Name: m.name, Email: m.email, Role: m.user_role, HourlyWage: m.hourly_wage,
+      Active: m.is_active ? "Yes" : "No",
+    })));
+  }
+
+  function editSelected() {
+    const m = staff.find(x => sel.isSelected(x.id));
+    if (m) openEdit(m);
+  }
 
   return (
     <>
-      <ModuleLayout title="Staff" subNav={SUB_NAV} activeView={view} onViewChange={setView}>
-        {view === "list"   && <StaffList onAddStaff={() => setPanelOpen(true)} />}
+      <ModuleLayout title="Staff" subNav={SUB_NAV} activeView={view} onViewChange={setView} onBackgroundClick={view === "list" ? sel.clear : undefined}>
+        {view === "list"   && (
+          <StaffList
+            staff={filtered} allStaff={staff} onAddStaff={openAdd}
+            onEdit={openEdit} onDelete={deleteOne} sel={sel}
+            search={search} onSearchChange={setSearch}
+            roleFilter={roleFilter} onRoleFilterChange={setRoleFilter}
+            activeFilter={activeFilter} onActiveFilterChange={setActiveFilter}
+            wageRange={wageRange} onWageRangeChange={setWageRange}
+          />
+        )}
         {view === "clocks" && <ClockEventsView />}
         {view === "shifts" && <ShiftsView />}
       </ModuleLayout>
-      <RightPanel open={panelOpen} onClose={() => setPanelOpen(false)} title="Add Staff Member">
-        <AddStaffForm onClose={() => setPanelOpen(false)} />
+      <RightPanel open={panelOpen} onClose={() => { setPanelOpen(false); setEditingStaff(null); }} title={editingStaff ? "Edit Staff Member" : "Add Staff Member"}>
+        <AddStaffForm initial={editingStaff} onSave={handleSaveStaff} />
       </RightPanel>
+
+      {view === "list" && !panelOpen && (
+        <BulkActionBar
+          count={sel.count}
+          entityLabel="staff member"
+          onEdit={sel.count === 1 ? editSelected : undefined}
+          onExport={exportSelected}
+          onDelete={deleteSelected}
+          onClear={sel.clear}
+        />
+      )}
     </>
   );
 }

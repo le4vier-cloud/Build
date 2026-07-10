@@ -98,8 +98,8 @@ export default function InventoryPage() {
   const allVisibleSelected = filtered.length > 0 && filtered.every(p => sel.isSelected(p.id));
 
   return (
-    <ModuleLayout title="Parts" subNav={[]} activeView={null} onViewChange={() => {}}>
-    <div style={s.page}>
+    <ModuleLayout title="Parts" subNav={[]} activeView={null} onViewChange={() => {}} onBackgroundClick={sel.clear}>
+    <div style={s.page} onClick={(e) => { if (e.target === e.currentTarget) sel.clear(); }}>
       <div style={s.topBar}>
         <div style={{ flex: 1 }} />
         <div style={s.btnGroup}>

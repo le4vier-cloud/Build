@@ -150,7 +150,7 @@ export default function SuppliersPage() {
 
   return (
     <>
-      <ModuleLayout title="Suppliers" subNav={SUB_NAV} activeView={view} onViewChange={setView}>
+      <ModuleLayout title="Suppliers" subNav={SUB_NAV} activeView={view} onViewChange={setView} onBackgroundClick={sel.clear}>
         {view === "list" && (
           <SupplierList
             suppliers={suppliers}
@@ -220,7 +220,10 @@ function SupplierList({ suppliers, onAdd, onEdit, onDelete, sel }: {
   sel: ReturnType<typeof useSelection<string>>;
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <div
+      style={{ display: "flex", flexDirection: "column", gap: 10 }}
+      onClick={(e) => { if (e.target === e.currentTarget) sel.clear(); }}
+    >
       {suppliers.length === 0 && (
         <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>No suppliers yet.</p>
       )}

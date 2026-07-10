@@ -4,7 +4,7 @@ import { Pencil, Trash2 } from "lucide-react";
 
 interface RowActionsProps {
   visible: boolean;
-  onEdit: () => void;
+  onEdit?: () => void;
   onDelete: () => void;
   style?: React.CSSProperties;
 }
@@ -21,14 +21,16 @@ export function RowActions({ visible, onEdit, onDelete, style }: RowActionsProps
         ...style,
       }}
     >
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); onEdit(); }}
-        title="Edit"
-        style={iconBtn}
-      >
-        <Pencil size={13} strokeWidth={1.8} />
-      </button>
+      {onEdit && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onEdit(); }}
+          title="Edit"
+          style={iconBtn}
+        >
+          <Pencil size={13} strokeWidth={1.8} />
+        </button>
+      )}
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onDelete(); }}
