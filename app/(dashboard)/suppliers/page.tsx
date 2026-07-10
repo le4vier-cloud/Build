@@ -41,15 +41,12 @@ const SEED_SUPPLIERS: Supplier[] = [
 ];
 
 /* ── Helpers ────────────────────────────────────────────── */
-const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
-
 function getInitials(name: string) {
   return name.split(/\s+/).filter(Boolean).map(w => w[0].toUpperCase()).join("").slice(0, 2);
 }
 
 function staticMapUrl(address: string, zoom = 15, w = 360, h = 180) {
-  if (!API_KEY) return "";
-  // Route through /api/maps/static proxy — keeps key server-side, avoids ORB
+  if (!address) return "";
   const parts = [
     `center=${encodeURIComponent(address)}`,
     `zoom=${zoom}`,
@@ -62,7 +59,7 @@ function staticMapUrl(address: string, zoom = 15, w = 360, h = 180) {
 }
 
 function allSuppliersMapUrl(suppliers: Supplier[], w = 800, h = 400) {
-  if (!API_KEY || suppliers.length === 0) return "";
+  if (suppliers.length === 0) return "";
   const markerParts = suppliers.map(
     s => `markers=color:0x8B0000%7Clabel:${getInitials(s.name)[0]}%7C${encodeURIComponent(s.address)}`
   );
@@ -220,9 +217,9 @@ function SupplierCard({ supplier }: { supplier: Supplier }) {
 /* ── Map block (per supplier) ───────────────────────────── */
 function SupplierMapBlock({ supplier }: { supplier: Supplier }) {
   const [hovered, setHovered] = useState(false);
+  const [imgFailed, setImgFailed] = useState(false);
   const initials = getInitials(supplier.name);
   const mapUrl = staticMapUrl(supplier.address);
-  const hasKey = Boolean(API_KEY);
 
   return (
     <div
@@ -238,10 +235,11 @@ function SupplierMapBlock({ supplier }: { supplier: Supplier }) {
       }}
     >
       {/* Map background */}
-      {hasKey && mapUrl ? (
+      {mapUrl && !imgFailed ? (
         <img
           src={mapUrl}
           alt={`Map of ${supplier.address}`}
+          onError={() => setImgFailed(true)}
           style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", filter: hovered ? "brightness(0.88)" : "none", transition: "filter 0.15s" }}
           draggable={false}
         />
@@ -327,11 +325,6 @@ function MapPlaceholder({ address }: { address: string }) {
         <p style={{ fontSize: 11, color: "#888", margin: 0, lineHeight: 1.4 }}>
           {address || "No address"}
         </p>
-        {!API_KEY && (
-          <p style={{ fontSize: 10, color: "#aaa", margin: "4px 0 0" }}>
-            Add NEXT_PUBLIC_GOOGLE_MAPS_API_KEY to show map
-          </p>
-        )}
       </div>
     </div>
   );
@@ -339,10 +332,10 @@ function MapPlaceholder({ address }: { address: string }) {
 
 /* ── All-suppliers map view ─────────────────────────────── */
 function AllSuppliersMap({ suppliers, onAdd }: { suppliers: Supplier[]; onAdd: () => void }) {
-  const hasKey   = Boolean(API_KEY);
   const withAddr = suppliers.filter(s => s.address);
   const mapUrl   = allSuppliersMapUrl(withAddr, 1200, 500);
-  const [hovered, setHovered] = useState(false);
+  const [hovered, setHovered]     = useState(false);
+  const [imgFailed, setImgFailed] = useState(false);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -360,10 +353,11 @@ function AllSuppliersMap({ suppliers, onAdd }: { suppliers: Supplier[]; onAdd: (
           border: "1px solid var(--border)",
         }}
       >
-        {hasKey && mapUrl ? (
+        {mapUrl && !imgFailed ? (
           <img
             src={mapUrl}
             alt="All suppliers map"
+            onError={() => setImgFailed(true)}
             style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", filter: hovered ? "brightness(0.88)" : "none", transition: "filter 0.15s" }}
             draggable={false}
           />
