@@ -14,7 +14,7 @@ export default function LandingPage() {
       <p style={s.tagline}>Where are you working today?</p>
 
       <div style={s.cards}>
-        <Link href="/staff" style={{ ...s.card, ...s.cardDark }}>
+        <Link href="/home" style={{ ...s.card, ...s.cardDark }}>
           <Monitor size={40} color="#ffffff" strokeWidth={1.5} />
           <div>
             <p style={s.cardTitle}>Back-End</p>
