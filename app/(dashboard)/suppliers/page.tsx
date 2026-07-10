@@ -20,21 +20,21 @@ const SEED_SUPPLIERS: Supplier[] = [
   {
     id: "s1",
     name: "Economic Motor Spares",
-    address: "Paarl, Western Cape, South Africa",
+    address: "47 Main Street, Paarl, 7646, Western Cape, South Africa",
     emails: ["orders@ems.co.za"],
     cell_numbers: ["021 872 3456"],
   },
   {
     id: "s2",
     name: "Steel Direct SA",
-    address: "Stellenbosch, Western Cape, South Africa",
+    address: "12 Alfa Street, Techno Park, Stellenbosch, 7600, South Africa",
     emails: ["info@steeldirect.co.za"],
     cell_numbers: ["021 887 1234"],
   },
   {
     id: "s3",
     name: "Cape Hardware Supplies",
-    address: "Bellville, Cape Town, South Africa",
+    address: "143 Voortrekker Road, Bellville, Cape Town, 7530, South Africa",
     emails: ["sales@capehardware.co.za"],
     cell_numbers: ["021 948 5678"],
   },
@@ -120,9 +120,12 @@ export default function SuppliersPage() {
               onChange={e => set("name", e.target.value)} style={s.input} />
           </div>
           <div style={s.field}>
-            <label style={s.label}>Address *</label>
-            <input value={form.address} placeholder="e.g. 12 Main St, Paarl, Western Cape"
+            <label style={s.label}>Street Address *</label>
+            <input value={form.address} placeholder="e.g. 47 Main Street, Paarl, 7646, South Africa"
               onChange={e => set("address", e.target.value)} style={s.input} />
+            <span style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
+              Include street number and postal code for map accuracy
+            </span>
           </div>
           <MultiInput label="Email Addresses" values={form.emails}
             onChange={v => set("emails", v)} placeholder="name@company.co.za" type="email" />
