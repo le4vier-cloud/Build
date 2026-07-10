@@ -20,82 +20,73 @@ interface ModuleLayoutProps {
 export function ModuleLayout({ title, subNav, activeView, onViewChange, children }: ModuleLayoutProps) {
   const { setLocked, setHovered } = useSidebar();
 
-  function handleSubNavClick(key: string) {
+  function handleTabClick(key: string) {
     onViewChange(key);
     setLocked(false);
     setHovered(false);
   }
 
   return (
-    <div style={s.page}>
-      <h1 style={s.pageTitle}>{title}</h1>
-      <div style={s.card}>
-        <div style={s.subNav}>
-          {subNav.map((item) => (
+    <div style={{ margin: "-24px", height: "calc(100vh - 52px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{
+        height: 44,
+        display: "flex",
+        alignItems: "center",
+        gap: 2,
+        padding: "0 20px",
+        backgroundColor: "var(--surface)",
+        borderBottom: "1px solid var(--border)",
+        flexShrink: 0,
+      }}>
+        {title && (
+          <>
+            <span style={{
+              fontFamily: "var(--font-geist-pixel-square)",
+              fontSize: 28,
+              fontWeight: 700,
+              color: "var(--text-primary)",
+              letterSpacing: "-0.02em",
+              paddingRight: 14,
+              marginRight: 6,
+              borderRight: "1px solid var(--border)",
+              whiteSpace: "nowrap",
+            }}>
+              {title}
+            </span>
+          </>
+        )}
+        {subNav.map((item) => {
+          const active = activeView === item.key;
+          return (
             <button
               key={item.key}
-              onClick={() => handleSubNavClick(item.key)}
+              onClick={() => handleTabClick(item.key)}
               style={{
-                ...s.subNavItem,
-                ...(activeView === item.key ? s.subNavItemActive : {}),
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "0 14px",
+                height: 32,
+                borderRadius: 8,
+                border: "none",
+                cursor: "pointer",
+                fontSize: 13,
+                fontWeight: active ? 600 : 500,
+                backgroundColor: active ? "var(--bg)" : "transparent",
+                color: active ? "var(--text-primary)" : "var(--text-tertiary)",
+                transition: "background-color 0.15s, color 0.15s",
+                whiteSpace: "nowrap",
               }}
             >
-              <span style={s.subNavIcon}>{item.icon}</span>
-              <span style={s.subNavLabel}>{item.label}</span>
+              <span style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>{item.icon}</span>
+              <span>{item.label}</span>
             </button>
-          ))}
-        </div>
-        <div style={s.content}>{children}</div>
+          );
+        })}
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: 24, backgroundColor: "var(--bg)" }}>
+        {children}
       </div>
     </div>
   );
 }
-
-const s: Record<string, React.CSSProperties> = {
-  page: { display: "flex", flexDirection: "column", gap: 0, height: "100%" },
-  pageTitle: {
-    fontSize: 28,
-    fontWeight: 700,
-    color: "var(--text-primary)",
-    marginBottom: 16,
-    letterSpacing: "-0.02em",
-  },
-  card: {
-    backgroundColor: "var(--surface)",
-    borderRadius: "var(--radius-lg)",
-    border: "1px solid var(--border)",
-    display: "flex",
-    minHeight: 500,
-    overflow: "hidden",
-  },
-  subNav: {
-    width: 180,
-    borderRight: "1px solid var(--border)",
-    padding: "16px 8px",
-    display: "flex",
-    flexDirection: "column",
-    gap: 2,
-    flexShrink: 0,
-  },
-  subNavItem: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: "8px 12px",
-    borderRadius: "var(--radius-sm)",
-    border: "none",
-    background: "none",
-    cursor: "pointer",
-    textAlign: "left",
-    width: "100%",
-    color: "var(--text-secondary)",
-  },
-  subNavItemActive: {
-    backgroundColor: "var(--bg)",
-    color: "var(--text-primary)",
-    fontWeight: 600,
-  },
-  subNavIcon: { display: "flex", alignItems: "center", flexShrink: 0 },
-  subNavLabel: { fontSize: 13, fontWeight: 500, whiteSpace: "nowrap" },
-  content: { flex: 1, padding: 32, overflowY: "auto" },
-};

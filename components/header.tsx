@@ -1,6 +1,7 @@
 "use client";
 
 import { Menu } from "lucide-react";
+import { NotificationsPanel } from "@/components/notifications-panel";
 
 interface HeaderProps {
   section?: string;
@@ -28,6 +29,7 @@ export function Header({ section = "Back-End", onMenuClick, menuActive }: Header
       </div>
 
       <div style={styles.right}>
+        <NotificationsPanel />
         <span style={styles.appName}>Build</span>
       </div>
     </header>
@@ -88,11 +90,14 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     display: "flex",
     justifyContent: "flex-end",
+    alignItems: "center",
+    gap: 10,
   },
   appName: {
     fontSize: 18,
     fontWeight: 700,
     color: "var(--text-primary)",
     letterSpacing: "-0.02em",
+    fontFamily: "var(--font-geist-pixel-square)",
   },
 };
