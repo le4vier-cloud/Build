@@ -45,15 +45,14 @@ function getInitials(name: string) {
   return name.split(/\s+/).filter(Boolean).map(w => w[0].toUpperCase()).join("").slice(0, 2);
 }
 
-function staticMapUrl(address: string, zoom = 15, w = 360, h = 180) {
+function staticMapUrl(address: string, zoom = 15, w = 200, h = 200) {
   if (!address) return "";
   const parts = [
     `center=${encodeURIComponent(address)}`,
     `zoom=${zoom}`,
     `size=${w}x${h}`,
     `scale=2`,
-    `style=feature:poi%7Cvisibility:off`,
-    `style=feature:transit%7Cvisibility:off`,
+    `maptype=satellite`,
   ];
   return `/api/maps/static?${parts.join("&")}`;
 }
@@ -63,7 +62,7 @@ function allSuppliersMapUrl(suppliers: Supplier[], w = 800, h = 400) {
   const markerParts = suppliers.map(
     s => `markers=color:0x8B0000%7Clabel:${getInitials(s.name)[0]}%7C${encodeURIComponent(s.address)}`
   );
-  const parts = [`size=${w}x${h}`, `scale=2`, ...markerParts];
+  const parts = [`size=${w}x${h}`, `scale=2`, `maptype=satellite`, ...markerParts];
   return `/api/maps/static?${parts.join("&")}`;
 }
 
@@ -145,14 +144,12 @@ export default function SuppliersPage() {
 /* ── Supplier list ──────────────────────────────────────── */
 function SupplierList({ suppliers, onAdd }: { suppliers: Supplier[]; onAdd: () => void }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {suppliers.length === 0 && (
         <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>No suppliers yet.</p>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
-        {suppliers.map(s => <SupplierCard key={s.id} supplier={s} />)}
-      </div>
+      {suppliers.map(s => <SupplierCard key={s.id} supplier={s} />)}
 
       <button
         onClick={onAdd}
@@ -177,44 +174,46 @@ function SupplierCard({ supplier }: { supplier: Supplier }) {
     <div style={{
       backgroundColor: "var(--surface)",
       border: "1px solid var(--border)",
-      borderRadius: 14,
+      borderRadius: 12,
       overflow: "hidden",
       display: "flex",
-      flexDirection: "column",
+      flexDirection: "row",
+      alignItems: "stretch",
+      minHeight: 88,
     }}>
-      {/* Map block */}
-      <SupplierMapBlock supplier={supplier} />
-
-      {/* Info */}
-      <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-        <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>{supplier.name}</span>
+      {/* Info — left */}
+      <div style={{ flex: 1, padding: "14px 16px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 5, minWidth: 0 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{supplier.name}</span>
 
         {supplier.address && (
-          <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
-            <MapPin size={13} strokeWidth={1.8} color="var(--text-tertiary)" style={{ flexShrink: 0, marginTop: 2 }} />
-            <span style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>{supplier.address}</span>
+          <div style={{ display: "flex", gap: 5, alignItems: "flex-start" }}>
+            <MapPin size={11} strokeWidth={1.8} color="var(--text-tertiary)" style={{ flexShrink: 0, marginTop: 1 }} />
+            <span style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.4 }}>{supplier.address}</span>
           </div>
         )}
 
-        {supplier.emails.map(e => (
-          <div key={e} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <Mail size={13} strokeWidth={1.8} color="var(--text-tertiary)" />
-            <a href={`mailto:${e}`} style={{ fontSize: 12, color: "var(--text-secondary)", textDecoration: "none" }}>{e}</a>
+        {supplier.emails.slice(0, 1).map(e => (
+          <div key={e} style={{ display: "flex", gap: 5, alignItems: "center" }}>
+            <Mail size={11} strokeWidth={1.8} color="var(--text-tertiary)" />
+            <a href={`mailto:${e}`} style={{ fontSize: 11, color: "var(--text-secondary)", textDecoration: "none", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e}</a>
           </div>
         ))}
 
-        {supplier.cell_numbers.map(n => (
-          <div key={n} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <Phone size={13} strokeWidth={1.8} color="var(--text-tertiary)" />
-            <a href={`tel:${n}`} style={{ fontSize: 12, color: "var(--text-secondary)", textDecoration: "none" }}>{n}</a>
+        {supplier.cell_numbers.slice(0, 1).map(n => (
+          <div key={n} style={{ display: "flex", gap: 5, alignItems: "center" }}>
+            <Phone size={11} strokeWidth={1.8} color="var(--text-tertiary)" />
+            <a href={`tel:${n}`} style={{ fontSize: 11, color: "var(--text-secondary)", textDecoration: "none" }}>{n}</a>
           </div>
         ))}
       </div>
+
+      {/* Map — right */}
+      <SupplierMapBlock supplier={supplier} />
     </div>
   );
 }
 
-/* ── Map block (per supplier) ───────────────────────────── */
+/* ── Map thumbnail (right side of card) ─────────────────── */
 function SupplierMapBlock({ supplier }: { supplier: Supplier }) {
   const [hovered, setHovered] = useState(false);
   const [imgFailed, setImgFailed] = useState(false);
@@ -223,60 +222,51 @@ function SupplierMapBlock({ supplier }: { supplier: Supplier }) {
 
   return (
     <div
-      onClick={() => supplier.address && openInMaps(supplier.address)}
+      onClick={e => { e.stopPropagation(); supplier.address && openInMaps(supplier.address); }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
         position: "relative",
-        height: 180,
+        width: 100,
+        flexShrink: 0,
         cursor: supplier.address ? "pointer" : "default",
         overflow: "hidden",
+        borderLeft: "1px solid var(--border)",
         backgroundColor: "var(--bg)",
       }}
     >
-      {/* Map background */}
       {mapUrl && !imgFailed ? (
         <img
           src={mapUrl}
           alt={`Map of ${supplier.address}`}
           onError={() => setImgFailed(true)}
-          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", filter: hovered ? "brightness(0.88)" : "none", transition: "filter 0.15s" }}
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", filter: hovered ? "brightness(0.8)" : "none", transition: "filter 0.15s" }}
           draggable={false}
         />
       ) : (
-        <MapPlaceholder address={supplier.address} />
+        <MapPlaceholder address="" />
       )}
 
-      {/* Centered pin with initials */}
+      {/* Pin */}
       <div style={{
         position: "absolute",
         top: "50%", left: "50%",
-        transform: "translate(-50%, calc(-50% - 12px))",
+        transform: "translate(-50%, calc(-50% - 8px))",
         pointerEvents: "none",
-        filter: "drop-shadow(0 3px 6px rgba(0,0,0,0.4))",
+        filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.5))",
       }}>
-        <MapPinSVG initials={initials} />
+        <MapPinSVG initials={initials} size={28} />
       </div>
 
-      {/* "Open in Maps" hover pill */}
-      {supplier.address && (
+      {/* Hover overlay */}
+      {supplier.address && hovered && (
         <div style={{
-          position: "absolute",
-          top: 10, left: "50%",
-          transform: `translateX(-50%) translateY(${hovered ? 0 : -4}px)`,
-          opacity: hovered ? 1 : 0,
-          transition: "opacity 0.15s, transform 0.15s",
-          backgroundColor: "rgba(255,255,255,0.96)",
-          color: "#1a1a1a",
-          fontSize: 12, fontWeight: 600,
-          borderRadius: 20,
-          padding: "5px 12px",
-          display: "flex", alignItems: "center", gap: 5,
-          boxShadow: "0 2px 10px rgba(0,0,0,0.18)",
-          whiteSpace: "nowrap",
+          position: "absolute", inset: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          backgroundColor: "rgba(0,0,0,0.18)",
           pointerEvents: "none",
         }}>
-          Open in Maps <ExternalLink size={11} strokeWidth={2.5} />
+          <ExternalLink size={16} color="#fff" strokeWidth={2} style={{ filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.5))" }} />
         </div>
       )}
     </div>
@@ -284,9 +274,10 @@ function SupplierMapBlock({ supplier }: { supplier: Supplier }) {
 }
 
 /* ── Custom SVG map pin ─────────────────────────────────── */
-function MapPinSVG({ initials }: { initials: string }) {
+function MapPinSVG({ initials, size = 36 }: { initials: string; size?: number }) {
+  const h = Math.round(size * 56 / 44);
   return (
-    <svg viewBox="0 0 44 56" width={44} height={56} xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 44 56" width={size} height={h} xmlns="http://www.w3.org/2000/svg">
       <path
         d="M22 0C9.85 0 0 9.85 0 22c0 14.25 22 34 22 34S44 36.25 44 22C44 9.85 34.15 0 22 0z"
         fill="#8B1A1A"
