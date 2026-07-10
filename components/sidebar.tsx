@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Box, Wrench, Users, Truck,
-  GitBranch, CircleUser, FileText,
+  GitBranch, CircleUser, FileText, ShoppingBag,
   SlidersHorizontal, LogOut, UserRound,
 } from "lucide-react";
 
@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { href: "/tools",      icon: Wrench,            label: "Tools" },
   { href: "/staff",      icon: Users,             label: "Staff" },
   { href: "/suppliers",  icon: Truck,             label: "Suppliers" },
+  { href: "/products",   icon: ShoppingBag,       label: "Products" },
   { href: "/processes",  icon: GitBranch,         label: "Processes" },
   { href: "/clients",    icon: CircleUser,        label: "Clients" },
   { href: "/orders",     icon: FileText,          label: "Orders" },

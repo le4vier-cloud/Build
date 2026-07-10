@@ -13,10 +13,8 @@ const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('build-the
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={GeistPixelSquare.variable} style={{ height: "100%" }} suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
-      </head>
       <body style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         {children}
       </body>
     </html>
