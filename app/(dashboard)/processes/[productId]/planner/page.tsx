@@ -1,9 +1,9 @@
 "use client";
 
-import React, { use, useEffect } from "react";
+import React, { use, useEffect, useRef, useState } from "react";
 import { FlowCanvas }        from "@/components/manufacturing/FlowCanvas";
 import { useManufacturingStore } from "@/stores/useManufacturingStore";
-import { ArrowLeft, Clock, Workflow, ListTodo } from "lucide-react";
+import { ArrowLeft, Clock, Workflow, ListTodo, Maximize2, Minimize2 } from "lucide-react";
 import Link from "next/link";
 
 /* ── Demo data ───────────────────────────────────────────────────── */
@@ -30,6 +30,8 @@ const fmtMin = (min: number) => {
 export default function PlannerPage({ params }: { params: Promise<{ productId: string }> }) {
   const { productId } = use(params);
   const { setData, setSelectedProduct, workflows, tasks } = useManufacturingStore();
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const state = useManufacturingStore.getState();
@@ -39,10 +41,38 @@ export default function PlannerPage({ params }: { params: Promise<{ productId: s
     }
   }, [productId, setData, setSelectedProduct]);
 
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.key === "f" || e.key === "F") && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)) {
+        toggleFullscreen();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) containerRef.current?.requestFullscreen();
+    else document.exitFullscreen();
+  };
+
   const totalTime = tasks.reduce((s, t) => s + t.duration, 0);
 
   return (
-    <div style={{ height: "calc(100vh - 100px)", display: "flex", flexDirection: "column" }}>
+    <div
+      ref={containerRef}
+      style={
+        isFullscreen
+          ? { height: "100vh", display: "flex", flexDirection: "column", backgroundColor: "var(--bg)", padding: 16, boxSizing: "border-box" }
+          : { height: "calc(100vh - 100px)", display: "flex", flexDirection: "column" }
+      }
+    >
 
       {/* Header */}
       <div style={s.header}>
@@ -68,6 +98,9 @@ export default function PlannerPage({ params }: { params: Promise<{ productId: s
               {workflows.length} {workflows.length === 1 ? "workflow" : "workflows"}
             </span>
           </div>
+          <button onClick={toggleFullscreen} title={isFullscreen ? "Exit Fullscreen (F)" : "Fullscreen (F)"} style={s.fullscreenBtn}>
+            {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+          </button>
         </div>
       </div>
 
@@ -87,4 +120,5 @@ const s: Record<string, React.CSSProperties> = {
   chip:      { display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", backgroundColor: "var(--bg)", border: "1px solid var(--border)", borderRadius: 999 },
   chipLabel: { color: "var(--text-secondary)", fontSize: 12 },
   chipVal:   { fontWeight: 700, color: "var(--text-primary)", fontSize: 12 },
+  fullscreenBtn: { display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, backgroundColor: "var(--bg)", border: "1px solid var(--border)", borderRadius: 7, color: "var(--text-secondary)", cursor: "pointer" },
 };
