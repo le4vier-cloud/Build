@@ -5,6 +5,7 @@ import { Warehouse, MapPin, Plus, Mail, Phone, ExternalLink } from "lucide-react
 import { ModuleLayout } from "@/components/ui/module-layout";
 import { RightPanel } from "@/components/ui/right-panel";
 import { MultiInput } from "@/components/ui/multi-input";
+import { AddressAutocomplete } from "@/components/ui/address-autocomplete";
 
 /* ── Types ──────────────────────────────────────────────── */
 type Supplier = {
@@ -121,10 +122,13 @@ export default function SuppliersPage() {
           </div>
           <div style={s.field}>
             <label style={s.label}>Street Address *</label>
-            <input value={form.address} placeholder="e.g. 47 Main Street, Paarl, 7646, South Africa"
-              onChange={e => set("address", e.target.value)} style={s.input} />
+            <AddressAutocomplete
+              value={form.address}
+              onChange={v => set("address", v)}
+              placeholder="Search for an address..."
+            />
             <span style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
-              Include street number and postal code for map accuracy
+              Start typing and select from the results for map accuracy
             </span>
           </div>
           <MultiInput label="Email Addresses" values={form.emails}

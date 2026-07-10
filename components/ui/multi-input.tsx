@@ -12,15 +12,32 @@ interface MultiInputProps {
   type?: string;
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const TEL_RE   = /^[\d\s()+\-]{7,}$/;
+
+function validate(type: string, v: string): string | null {
+  if (type === "email" && !EMAIL_RE.test(v)) return "Enter a valid email address";
+  if (type === "tel" && !TEL_RE.test(v)) return "Enter a valid phone number";
+  return null;
+}
+
 export function MultiInput({ label, values, onChange, placeholder = "Type here...", required, type = "text" }: MultiInputProps) {
   const [draft, setDraft] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   const add = () => {
     const v = draft.trim();
-    if (v && !values.includes(v)) {
+    if (!v) return;
+    const err = validate(type, v);
+    if (err) {
+      setError(err);
+      return;
+    }
+    if (!values.includes(v)) {
       onChange([...values, v]);
       setDraft("");
     }
+    setError(null);
   };
 
   const remove = (i: number) => onChange(values.filter((_, idx) => idx !== i));
@@ -32,15 +49,16 @@ export function MultiInput({ label, values, onChange, placeholder = "Type here..
         <input
           type={type}
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => { setDraft(e.target.value); if (error) setError(null); }}
           onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), add())}
           placeholder={placeholder}
-          style={s.input}
+          style={{ ...s.input, ...(error ? { borderColor: "var(--danger)" } : {}) }}
         />
         <button type="button" onClick={add} style={s.addBtn} aria-label="Add">
           <Plus size={16} strokeWidth={2} />
         </button>
       </div>
+      {error && <span style={s.error}>{error}</span>}
       {values.length > 0 && (
         <div style={s.chips}>
           {values.map((v, i) => (
@@ -61,6 +79,7 @@ const s: Record<string, React.CSSProperties> = {
   wrap: { display: "flex", flexDirection: "column", gap: 6 },
   label: { fontSize: 13, fontWeight: 500, color: "var(--text-primary)" },
   req: { color: "var(--danger)", marginLeft: 2 },
+  error: { fontSize: 11, color: "var(--danger)" },
   row: { display: "flex", gap: 6, alignItems: "center" },
   input: {
     flex: 1,
