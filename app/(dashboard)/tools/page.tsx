@@ -1,14 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Scissors, Plus, BookOpen, Bell,
-  Trash2, Clock, X, Check, ChevronRight,
+  Trash2, Clock, X, Check,
   Calendar, RefreshCw, ClipboardList, Wrench,
-  AlertCircle, ZapOff, Zap, Edit2,
+  AlertCircle, ZapOff, Zap,
 } from "lucide-react";
 import { ModuleLayout } from "@/components/ui/module-layout";
 import { RightPanel } from "@/components/ui/right-panel";
+import { useSelection } from "@/hooks/useSelection";
+import { SelectCheckbox } from "@/components/ui/select-checkbox";
+import { RowActions } from "@/components/ui/row-actions";
+import { BulkActionBar } from "@/components/ui/bulk-action-bar";
+import { exportToCsv } from "@/lib/csv-export";
 
 /* ── Types ─────────────────────────────────────────────── */
 type Tool = {
@@ -160,7 +165,15 @@ function CostField({
 /* ═══════════════════════════════════════════════════════════
    Tool List
 ═══════════════════════════════════════════════════════════ */
-function ToolList({ tools, onSelect, onAdd }: { tools: Tool[]; onSelect: (id: string) => void; onAdd: () => void }) {
+function ToolList({ tools, onEdit, onDelete, sel, onAdd }: {
+  tools: Tool[];
+  onEdit: (t: Tool) => void;
+  onDelete: (id: string) => void;
+  sel: ReturnType<typeof useSelection<string>>;
+  onAdd: () => void;
+}) {
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 680 }}>
       {tools.length === 0 && (
@@ -169,27 +182,36 @@ function ToolList({ tools, onSelect, onAdd }: { tools: Tool[]; onSelect: (id: st
           <p style={{ fontSize: 14 }}>No tools yet — add your first tool.</p>
         </div>
       )}
-      {tools.map(tool => (
-        <div key={tool.id}
-          style={{ backgroundColor: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: "16px 20px", display: "flex", alignItems: "center", gap: 20, cursor: "pointer", transition: "border-color 0.15s" }}
-          onClick={() => onSelect(tool.id)}
-          onMouseEnter={e => (e.currentTarget.style.borderColor = "var(--accent)")}
-          onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--border)")}
-        >
-          <div style={{ width: 44, height: 44, borderRadius: "var(--radius-sm)", backgroundColor: "var(--surface)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <Scissors size={20} color="var(--accent)" strokeWidth={1.5} />
+      {tools.map(tool => {
+        const selected = sel.isSelected(tool.id);
+        const hovered  = hoveredId === tool.id;
+        return (
+          <div key={tool.id}
+            style={{
+              backgroundColor: "var(--bg)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-md)", padding: "16px 20px", display: "flex", alignItems: "center", gap: 14,
+              transition: "border-color 0.15s",
+            }}
+            onMouseEnter={() => setHoveredId(tool.id)}
+            onMouseLeave={() => setHoveredId(null)}
+          >
+            <SelectCheckbox checked={selected} visible={hovered || sel.count > 0} onChange={() => sel.toggle(tool.id)} />
+            <div style={{ width: 44, height: 44, borderRadius: "var(--radius-sm)", backgroundColor: "var(--surface)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Scissors size={20} color="var(--accent)" strokeWidth={1.5} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>{tool.name}</div>
+              <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>SN: {tool.serial_number}</div>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+              <CostChip icon={<ZapOff size={11} />} label="Idle"    value={`R ${tool.cost_per_min_idle.toFixed(2)}/min`}    color="var(--text-secondary)" bg="var(--surface)" />
+              <CostChip icon={<Zap    size={11} />} label="Working" value={`R ${tool.cost_per_min_working.toFixed(2)}/min`} color="#10B981"                bg="rgba(16,185,129,0.08)" />
+            </div>
+            <RowActions visible={hovered} onEdit={() => onEdit(tool)} onDelete={() => onDelete(tool.id)} />
           </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>{tool.name}</div>
-            <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>SN: {tool.serial_number}</div>
-          </div>
-          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-            <CostChip icon={<ZapOff size={11} />} label="Idle"    value={`R ${tool.cost_per_min_idle.toFixed(2)}/min`}    color="var(--text-secondary)" bg="var(--surface)" />
-            <CostChip icon={<Zap    size={11} />} label="Working" value={`R ${tool.cost_per_min_working.toFixed(2)}/min`} color="#10B981"                bg="rgba(16,185,129,0.08)" />
-          </div>
-          <ChevronRight size={16} color="var(--text-tertiary)" />
-        </div>
-      ))}
+        );
+      })}
       <button
         onClick={onAdd}
         style={{
@@ -226,20 +248,30 @@ function blankTool() {
   return { name: "", serial_number: "", cost_per_min_idle: "", cost_per_min_working: "" };
 }
 
-function AddToolForm({ onSave }: { onSave: (t: Tool) => void }) {
-  const [f, setF] = useState(blankTool());
+function toolToForm(t: Tool) {
+  return {
+    name: t.name,
+    serial_number: t.serial_number,
+    cost_per_min_idle: String(t.cost_per_min_idle),
+    cost_per_min_working: String(t.cost_per_min_working),
+  };
+}
+
+function AddToolForm({ initial, onSave }: { initial?: Tool | null; onSave: (t: Tool) => void }) {
+  const isEdit = !!initial;
+  const [f, setF] = useState(initial ? toolToForm(initial) : blankTool());
   const set = (k: string, v: string) => setF(p => ({ ...p, [k]: v }));
 
   function handleSave() {
     if (!f.name.trim() || !f.serial_number.trim()) return;
     onSave({
-      id: uid(),
+      id: initial?.id ?? uid(),
       name: f.name.trim(),
       serial_number: f.serial_number.trim(),
       cost_per_min_idle:    parseFloat(f.cost_per_min_idle)    || 0,
       cost_per_min_working: parseFloat(f.cost_per_min_working) || 0,
     });
-    setF(blankTool());
+    if (!isEdit) setF(blankTool());
   }
 
   const idleMin   = parseFloat(f.cost_per_min_idle)    || 0;
@@ -250,7 +282,7 @@ function AddToolForm({ onSave }: { onSave: (t: Tool) => void }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24, maxWidth: 480 }}>
-      <h3 style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.01em" }}>New Tool</h3>
+      <h3 style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.01em" }}>{isEdit ? "Edit Tool" : "New Tool"}</h3>
 
       {/* Image */}
       <div style={{ width: 100, height: 100, border: "1.5px dashed var(--input-border)", borderRadius: "var(--radius-md)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer", backgroundColor: "var(--bg)" }}>
@@ -303,7 +335,7 @@ function AddToolForm({ onSave }: { onSave: (t: Tool) => void }) {
         disabled={!f.name.trim() || !f.serial_number.trim()}
         style={{ ...solidBtn, opacity: !f.name.trim() || !f.serial_number.trim() ? 0.45 : 1, alignSelf: "flex-start" }}
       >
-        Save Tool
+        {isEdit ? "Save Changes" : "Save Tool"}
       </button>
     </div>
   );
@@ -796,15 +828,55 @@ const iconBtn: React.CSSProperties = {
 export default function ToolsPage() {
   const [view, setView]           = useState("list");
   const [panelOpen, setPanelOpen] = useState(false);
+  const [editingTool, setEditingTool] = useState<Tool | null>(null);
   const [tools, setTools]         = useState<Tool[]>(SEED_TOOLS);
   const [records, setRecords]     = useState<ServiceRecord[]>(SEED_RECORDS);
   const [alerts, setAlerts]       = useState<ServiceAlert[]>(SEED_ALERTS);
+  const sel = useSelection<string>();
+
+  useEffect(() => { if (view !== "list") sel.clear(); }, [view]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function openAdd() { setEditingTool(null); setPanelOpen(true); }
+  function openEdit(t: Tool) { setEditingTool(t); setPanelOpen(true); }
+
+  function handleSaveTool(t: Tool) {
+    setTools(prev => {
+      const exists = prev.some(x => x.id === t.id);
+      return exists ? prev.map(x => x.id === t.id ? t : x) : [...prev, t];
+    });
+    setPanelOpen(false);
+    setEditingTool(null);
+  }
+
+  function deleteOne(id: string) {
+    if (!window.confirm("Delete this tool?")) return;
+    setTools(prev => prev.filter(t => t.id !== id));
+    sel.clear();
+  }
+
+  function deleteSelected() {
+    setTools(prev => prev.filter(t => !sel.isSelected(t.id)));
+    sel.clear();
+  }
+
+  function exportSelected() {
+    const rows = tools.filter(t => sel.isSelected(t.id));
+    exportToCsv("tools", rows.map(t => ({
+      Name: t.name, SerialNumber: t.serial_number,
+      IdleCostPerMin: t.cost_per_min_idle, WorkingCostPerMin: t.cost_per_min_working,
+    })));
+  }
+
+  function editSelected() {
+    const t = tools.find(x => sel.isSelected(x.id));
+    if (t) openEdit(t);
+  }
 
   return (
     <>
       <ModuleLayout title="Tools" subNav={SUB_NAV} activeView={view} onViewChange={setView}>
         {view === "list" && (
-          <ToolList tools={tools} onSelect={() => {}} onAdd={() => setPanelOpen(true)} />
+          <ToolList tools={tools} onEdit={openEdit} onDelete={deleteOne} sel={sel} onAdd={openAdd} />
         )}
         {view === "service-book" && (
           <ServiceBook tools={tools} records={records} onAdd={r => setRecords(p => [r, ...p])} />
@@ -818,9 +890,20 @@ export default function ToolsPage() {
           />
         )}
       </ModuleLayout>
-      <RightPanel open={panelOpen} onClose={() => setPanelOpen(false)} title="Add Tool">
-        <AddToolForm onSave={t => { setTools(p => [...p, t]); setPanelOpen(false); }} />
+      <RightPanel open={panelOpen} onClose={() => { setPanelOpen(false); setEditingTool(null); }} title={editingTool ? "Edit Tool" : "Add Tool"}>
+        <AddToolForm initial={editingTool} onSave={handleSaveTool} />
       </RightPanel>
+
+      {view === "list" && (
+        <BulkActionBar
+          count={sel.count}
+          entityLabel="tool"
+          onEdit={sel.count === 1 ? editSelected : undefined}
+          onExport={exportSelected}
+          onDelete={deleteSelected}
+          onClear={sel.clear}
+        />
+      )}
     </>
   );
 }

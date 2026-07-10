@@ -6,6 +6,11 @@ import { ModuleLayout } from "@/components/ui/module-layout";
 import { RightPanel } from "@/components/ui/right-panel";
 import { MultiInput } from "@/components/ui/multi-input";
 import { AddressAutocomplete } from "@/components/ui/address-autocomplete";
+import { useSelection } from "@/hooks/useSelection";
+import { SelectCheckbox } from "@/components/ui/select-checkbox";
+import { RowActions } from "@/components/ui/row-actions";
+import { BulkActionBar } from "@/components/ui/bulk-action-bar";
+import { exportToCsv } from "@/lib/csv-export";
 
 /* ── Types ──────────────────────────────────────────────── */
 type Supplier = {
@@ -84,19 +89,63 @@ const SUB_NAV = [
   { key: "map",  label: "Map",       icon: <MapPin    size={15} strokeWidth={1.8} /> },
 ];
 
+const BLANK_FORM = { name: "", address: "", emails: [] as string[], cell_numbers: [] as string[] };
+
 /* ── Page ───────────────────────────────────────────────── */
 export default function SuppliersPage() {
   const [view, setView]           = useState("list");
   const [suppliers, setSuppliers] = useState<Supplier[]>(SEED_SUPPLIERS);
   const [panelOpen, setPanelOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", address: "", emails: [] as string[], cell_numbers: [] as string[] });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState(BLANK_FORM);
   const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }));
+  const sel = useSelection<string>();
+
+  function openAdd() {
+    setEditingId(null);
+    setForm(BLANK_FORM);
+    setPanelOpen(true);
+  }
+
+  function openEdit(supplier: Supplier) {
+    setEditingId(supplier.id);
+    setForm({ name: supplier.name, address: supplier.address, emails: supplier.emails, cell_numbers: supplier.cell_numbers });
+    setPanelOpen(true);
+  }
 
   function handleSave() {
     if (!form.name.trim()) return;
-    setSuppliers(prev => [...prev, { id: crypto.randomUUID(), ...form }]);
+    if (editingId) {
+      setSuppliers(prev => prev.map(sup => sup.id === editingId ? { id: editingId, ...form } : sup));
+    } else {
+      setSuppliers(prev => [...prev, { id: crypto.randomUUID(), ...form }]);
+    }
     setPanelOpen(false);
-    setForm({ name: "", address: "", emails: [], cell_numbers: [] });
+    setEditingId(null);
+    setForm(BLANK_FORM);
+  }
+
+  function deleteOne(id: string) {
+    if (!window.confirm("Delete this supplier?")) return;
+    setSuppliers(prev => prev.filter(sup => sup.id !== id));
+    sel.clear();
+  }
+
+  function deleteSelected() {
+    setSuppliers(prev => prev.filter(sup => !sel.isSelected(sup.id)));
+    sel.clear();
+  }
+
+  function exportSelected() {
+    const rows = suppliers.filter(sup => sel.isSelected(sup.id));
+    exportToCsv("suppliers", rows.map(sup => ({
+      Name: sup.name, Address: sup.address, Emails: sup.emails.join("; "), Cells: sup.cell_numbers.join("; "),
+    })));
+  }
+
+  function editSelected() {
+    const sup = suppliers.find(s => sel.isSelected(s.id));
+    if (sup) openEdit(sup);
   }
 
   return (
@@ -105,15 +154,18 @@ export default function SuppliersPage() {
         {view === "list" && (
           <SupplierList
             suppliers={suppliers}
-            onAdd={() => setPanelOpen(true)}
+            onAdd={openAdd}
+            onEdit={openEdit}
+            onDelete={deleteOne}
+            sel={sel}
           />
         )}
         {view === "map" && (
-          <AllSuppliersMap suppliers={suppliers} onAdd={() => setPanelOpen(true)} />
+          <AllSuppliersMap suppliers={suppliers} onAdd={openAdd} />
         )}
       </ModuleLayout>
 
-      <RightPanel open={panelOpen} onClose={() => setPanelOpen(false)} title="New Supplier">
+      <RightPanel open={panelOpen} onClose={() => { setPanelOpen(false); setEditingId(null); }} title={editingId ? "Edit Supplier" : "New Supplier"}>
         <div style={s.form}>
           <div style={s.field}>
             <label style={s.label}>Supplier Name *</label>
@@ -140,23 +192,40 @@ export default function SuppliersPage() {
             disabled={!form.name.trim()}
             style={{ ...s.saveBtn, opacity: !form.name.trim() ? 0.45 : 1 }}
           >
-            Save Supplier
+            {editingId ? "Save Changes" : "Save Supplier"}
           </button>
         </div>
       </RightPanel>
+
+      <BulkActionBar
+        count={sel.count}
+        entityLabel="supplier"
+        onEdit={sel.count === 1 ? editSelected : undefined}
+        onExport={exportSelected}
+        onDelete={deleteSelected}
+        onClear={sel.clear}
+      />
     </>
   );
 }
 
 /* ── Supplier list ──────────────────────────────────────── */
-function SupplierList({ suppliers, onAdd }: { suppliers: Supplier[]; onAdd: () => void }) {
+function SupplierList({ suppliers, onAdd, onEdit, onDelete, sel }: {
+  suppliers: Supplier[];
+  onAdd: () => void;
+  onEdit: (s: Supplier) => void;
+  onDelete: (id: string) => void;
+  sel: ReturnType<typeof useSelection<string>>;
+}) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {suppliers.length === 0 && (
         <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>No suppliers yet.</p>
       )}
 
-      {suppliers.map(s => <SupplierCard key={s.id} supplier={s} />)}
+      {suppliers.map(sup => (
+        <SupplierCard key={sup.id} supplier={sup} onEdit={onEdit} onDelete={onDelete} sel={sel} />
+      ))}
 
       <button
         onClick={onAdd}
@@ -176,18 +245,36 @@ function SupplierList({ suppliers, onAdd }: { suppliers: Supplier[]; onAdd: () =
 }
 
 /* ── Supplier card ──────────────────────────────────────── */
-function SupplierCard({ supplier }: { supplier: Supplier }) {
+function SupplierCard({ supplier, onEdit, onDelete, sel }: {
+  supplier: Supplier;
+  onEdit: (s: Supplier) => void;
+  onDelete: (id: string) => void;
+  sel: ReturnType<typeof useSelection<string>>;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const selected = sel.isSelected(supplier.id);
+
   return (
-    <div style={{
-      backgroundColor: "var(--surface)",
-      border: "1px solid var(--border)",
-      borderRadius: 12,
-      overflow: "hidden",
-      display: "flex",
-      flexDirection: "row",
-      alignItems: "stretch",
-      minHeight: 88,
-    }}>
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        backgroundColor: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: 12,
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "row",
+        alignItems: "stretch",
+        minHeight: 88,
+        position: "relative",
+      }}
+    >
+      {/* Checkbox */}
+      <div style={{ display: "flex", alignItems: "center", paddingLeft: 14 }}>
+        <SelectCheckbox checked={selected} visible={hovered || sel.count > 0} onChange={() => sel.toggle(supplier.id)} />
+      </div>
+
       {/* Info — left */}
       <div style={{ flex: 1, padding: "14px 16px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 5, minWidth: 0 }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{supplier.name}</span>
@@ -212,6 +299,11 @@ function SupplierCard({ supplier }: { supplier: Supplier }) {
             <a href={`tel:${n}`} style={{ fontSize: 11, color: "var(--text-secondary)", textDecoration: "none" }}>{n}</a>
           </div>
         ))}
+      </div>
+
+      {/* Row actions */}
+      <div style={{ display: "flex", alignItems: "center", paddingRight: 12 }}>
+        <RowActions visible={hovered} onEdit={() => onEdit(supplier)} onDelete={() => onDelete(supplier.id)} />
       </div>
 
       {/* Map — right */}

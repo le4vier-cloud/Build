@@ -2,13 +2,33 @@
 
 import { useState } from "react";
 import { AlertCircle, Plus, X, Trash2 } from "lucide-react";
+import { ModuleLayout } from "@/components/ui/module-layout";
+import { useSelection } from "@/hooks/useSelection";
+import { SelectCheckbox } from "@/components/ui/select-checkbox";
+import { RowActions } from "@/components/ui/row-actions";
+import { BulkActionBar } from "@/components/ui/bulk-action-bar";
+import { exportToCsv } from "@/lib/csv-export";
 
 type StockType = "all" | "outsourced" | "internal";
 type ActiveForm = "os" | "im" | null;
 
 interface SubComponent { id: string; name: string; qty: number }
 
-const MOCK_INVENTORY = [
+interface Part {
+  id: string;
+  name: string;
+  barcode: string;
+  serial: string;
+  qty: number;
+  min: number;
+  type: "Out Sourced" | "Internally Manufactured";
+  supplier: string;
+  reorder: boolean;
+  cost: number;
+  sale: number;
+}
+
+const MOCK_INVENTORY: Part[] = [
   { id: "1", name: "COMPRESSION LATCH", barcode: "1111", serial: "1111", qty: 50,  min: 50, type: "Out Sourced",            supplier: "Economic motor spares", reorder: true,  cost: 100,     sale: 130     },
   { id: "2", name: "M5 WASHER SMALL",   barcode: "1111", serial: "1111", qty: 100, min: 50, type: "Out Sourced",            supplier: "Economic motor spares", reorder: false, cost: 10,      sale: 13      },
   { id: "3", name: "M5 LOCKNUT",        barcode: "1111", serial: "1111", qty: 100, min: 50, type: "Out Sourced",            supplier: "Economic motor spares", reorder: false, cost: 10,      sale: 13      },
@@ -17,26 +37,76 @@ const MOCK_INVENTORY = [
 ];
 
 export default function InventoryPage() {
+  const [items,      setItems]      = useState<Part[]>(MOCK_INVENTORY);
   const [typeFilter, setTypeFilter] = useState<StockType>("all");
   const [search,     setSearch]     = useState("");
   const [activeForm, setActiveForm] = useState<ActiveForm>(null);
+  const [editingPart, setEditingPart] = useState<Part | null>(null);
+  const [hoveredId,  setHoveredId]  = useState<string | null>(null);
 
-  const filtered = MOCK_INVENTORY.filter((item) => {
+  const sel = useSelection<string>();
+
+  const filtered = items.filter((item) => {
     if (typeFilter === "outsourced" && item.type !== "Out Sourced") return false;
     if (typeFilter === "internal"   && item.type !== "Internally Manufactured") return false;
     if (search && !item.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
+  function closeForm() {
+    setActiveForm(null);
+    setEditingPart(null);
+  }
+
+  function openEdit(part: Part) {
+    setEditingPart(part);
+    setActiveForm(part.type === "Out Sourced" ? "os" : "im");
+  }
+
+  function handleSavePart(part: Part) {
+    setItems(prev => {
+      const exists = prev.some(p => p.id === part.id);
+      return exists ? prev.map(p => p.id === part.id ? part : p) : [...prev, part];
+    });
+    closeForm();
+  }
+
+  function deleteOne(id: string) {
+    if (!window.confirm("Delete this part?")) return;
+    setItems(prev => prev.filter(p => p.id !== id));
+    sel.clear();
+  }
+
+  function deleteSelected() {
+    setItems(prev => prev.filter(p => !sel.isSelected(p.id)));
+    sel.clear();
+  }
+
+  function exportSelected() {
+    const rows = items.filter(p => sel.isSelected(p.id));
+    exportToCsv("parts", rows.map(p => ({
+      Name: p.name, Barcode: p.barcode, Serial: p.serial, Qty: p.qty, Min: p.min,
+      Type: p.type, Supplier: p.supplier, Cost: p.cost, Sale: p.sale,
+    })));
+  }
+
+  function editSelected() {
+    const part = items.find(p => sel.isSelected(p.id));
+    if (part) openEdit(part);
+  }
+
+  const allVisibleSelected = filtered.length > 0 && filtered.every(p => sel.isSelected(p.id));
+
   return (
+    <ModuleLayout title="Parts" subNav={[]} activeView={null} onViewChange={() => {}}>
     <div style={s.page}>
       <div style={s.topBar}>
-        <h1 style={s.title}>Parts</h1>
+        <div style={{ flex: 1 }} />
         <div style={s.btnGroup}>
-          <button style={s.addBtn} onClick={() => setActiveForm(activeForm === "os" ? null : "os")}>
+          <button style={s.addBtn} onClick={() => { setEditingPart(null); setActiveForm(activeForm === "os" ? null : "os"); }}>
             <Plus size={14} strokeWidth={2.5} /> OS Part
           </button>
-          <button style={s.addBtn} onClick={() => setActiveForm(activeForm === "im" ? null : "im")}>
+          <button style={s.addBtn} onClick={() => { setEditingPart(null); setActiveForm(activeForm === "im" ? null : "im"); }}>
             <Plus size={14} strokeWidth={2.5} /> IM Part
           </button>
         </div>
@@ -57,62 +127,112 @@ export default function InventoryPage() {
           <table style={s.table}>
             <thead>
               <tr>
+                <th style={{ ...s.th, width: 36 }}>
+                  <SelectCheckbox
+                    checked={allVisibleSelected}
+                    visible={sel.count > 0 || filtered.length > 0}
+                    onChange={() => sel.toggleAll(filtered.map(p => p.id))}
+                  />
+                </th>
                 {["#", "Part Name", "Barcode", "Serial Number", "Amount In Stock", "Minimum Threshold", "Stock Item Type", "Supplier", "Re-Order Alert", "Cost Price", "Sale Price"].map((h) => (
                   <th key={h} style={s.th}>{h}</th>
                 ))}
+                <th style={{ ...s.th, width: 76 }} />
               </tr>
             </thead>
             <tbody>
-              {filtered.map((item, i) => (
-                <tr key={item.id} style={s.tr}>
-                  <td style={s.td}>{i + 1}</td>
-                  <td style={{ ...s.td, fontWeight: 500 }}>{item.name}</td>
-                  <td style={s.td}>{item.barcode}</td>
-                  <td style={s.td}>{item.serial}</td>
-                  <td style={s.td}>{item.qty}</td>
-                  <td style={s.td}>{item.min}</td>
-                  <td style={s.td}>{item.type}</td>
-                  <td style={s.td}><span style={s.supplierChip}>{item.supplier}</span></td>
-                  <td style={s.td}>
-                    <div style={s.alertCell}>
-                      <span style={{ ...s.dot, backgroundColor: item.qty > item.min ? "var(--success)" : "var(--warning)" }} />
-                      {item.qty <= item.min && <AlertCircle size={14} color="var(--danger)" />}
-                    </div>
-                  </td>
-                  <td style={s.td}>R{item.cost.toFixed(2)}</td>
-                  <td style={s.td}>R{item.sale.toFixed(2)}</td>
-                </tr>
-              ))}
+              {filtered.map((item, i) => {
+                const selected = sel.isSelected(item.id);
+                const hovered  = hoveredId === item.id;
+                return (
+                  <tr
+                    key={item.id}
+                    style={s.tr}
+                    onMouseEnter={() => setHoveredId(item.id)}
+                    onMouseLeave={() => setHoveredId(null)}
+                  >
+                    <td style={s.td}>
+                      <SelectCheckbox checked={selected} visible={hovered || sel.count > 0} onChange={() => sel.toggle(item.id)} />
+                    </td>
+                    <td style={s.td}>{i + 1}</td>
+                    <td style={{ ...s.td, fontWeight: 500 }}>{item.name}</td>
+                    <td style={s.td}>{item.barcode}</td>
+                    <td style={s.td}>{item.serial}</td>
+                    <td style={s.td}>{item.qty}</td>
+                    <td style={s.td}>{item.min}</td>
+                    <td style={s.td}>{item.type}</td>
+                    <td style={s.td}><span style={s.supplierChip}>{item.supplier}</span></td>
+                    <td style={s.td}>
+                      <div style={s.alertCell}>
+                        <span style={{ ...s.dot, backgroundColor: item.qty > item.min ? "var(--success)" : "var(--warning)" }} />
+                        {item.qty <= item.min && <AlertCircle size={14} color="var(--danger)" />}
+                      </div>
+                    </td>
+                    <td style={s.td}>R{item.cost.toFixed(2)}</td>
+                    <td style={s.td}>R{item.sale.toFixed(2)}</td>
+                    <td style={s.td}>
+                      <RowActions visible={hovered} onEdit={() => openEdit(item)} onDelete={() => deleteOne(item.id)} />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </div>
 
+      {activeForm && <div style={f.backdrop} onClick={closeForm} />}
+      {activeForm === "os" && <AddOSPartForm initial={editingPart} onClose={closeForm} onSave={handleSavePart} />}
+      {activeForm === "im" && <AddIMPartForm initial={editingPart} onClose={closeForm} onSave={handleSavePart} />}
 
-{activeForm && <div style={f.backdrop} onClick={() => setActiveForm(null)} />}
-      {activeForm === "os" && <AddOSPartForm onClose={() => setActiveForm(null)} />}
-      {activeForm === "im" && <AddIMPartForm onClose={() => setActiveForm(null)} />}
+      <BulkActionBar
+        count={sel.count}
+        entityLabel="part"
+        onEdit={sel.count === 1 ? editSelected : undefined}
+        onExport={exportSelected}
+        onDelete={deleteSelected}
+        onClear={sel.clear}
+      />
     </div>
+    </ModuleLayout>
   );
 }
 
 /* ── OS Part Form ───────────────────────────────────────────────── */
-function AddOSPartForm({ onClose }: { onClose: () => void }) {
-  const [name,          setName]          = useState("");
-  const [supplier,      setSupplier]      = useState("");
-  const [barcode,       setBarcode]       = useState("");
-  const [serial,        setSerial]        = useState("");
-  const [qty,           setQty]           = useState("");
-  const [min,           setMin]           = useState("");
-  const [cost,          setCost]          = useState("");
-  const [sale,          setSale]          = useState("");
-  const [lowStockAlert,    setLowStockAlert]    = useState(false);
+function AddOSPartForm({ initial, onClose, onSave }: { initial: Part | null; onClose: () => void; onSave: (p: Part) => void }) {
+  const isEdit = !!initial;
+  const [name,          setName]          = useState(initial?.name ?? "");
+  const [supplier,      setSupplier]      = useState(initial?.supplier ?? "");
+  const [barcode,       setBarcode]       = useState(initial?.barcode ?? "");
+  const [serial,        setSerial]        = useState(initial?.serial ?? "");
+  const [qty,           setQty]           = useState(initial ? String(initial.qty) : "");
+  const [min,           setMin]           = useState(initial ? String(initial.min) : "");
+  const [cost,          setCost]          = useState(initial ? String(initial.cost) : "");
+  const [sale,          setSale]          = useState(initial ? String(initial.sale) : "");
+  const [lowStockAlert,    setLowStockAlert]    = useState(initial?.reorder ?? false);
   const [alertThreshold,   setAlertThreshold]   = useState("");
+
+  function handleSave() {
+    if (!name.trim()) return;
+    onSave({
+      id: initial?.id ?? crypto.randomUUID(),
+      name: name.trim(),
+      supplier: supplier.trim(),
+      barcode: barcode.trim(),
+      serial: serial.trim(),
+      qty: parseFloat(qty) || 0,
+      min: parseFloat(min) || 0,
+      type: "Out Sourced",
+      reorder: lowStockAlert,
+      cost: parseFloat(cost) || 0,
+      sale: parseFloat(sale) || 0,
+    });
+  }
 
   return (
     <div style={f.panel}>
       <div style={f.header}>
-        <span style={f.headerTitle}>Add OS Part</span>
+        <span style={f.headerTitle}>{isEdit ? "Edit OS Part" : "Add OS Part"}</span>
         <button onClick={onClose} style={f.closeBtn}><X size={16} /></button>
       </div>
       <div style={f.body}>
@@ -164,18 +284,19 @@ function AddOSPartForm({ onClose }: { onClose: () => void }) {
       </div>
       <div style={f.footer}>
         <button onClick={onClose} style={f.cancelBtn}>Cancel</button>
-        <button style={f.saveBtn}>Add Part</button>
+        <button onClick={handleSave} style={f.saveBtn}>{isEdit ? "Save Changes" : "Add Part"}</button>
       </div>
     </div>
   );
 }
 
 /* ── IM Part Form ───────────────────────────────────────────────── */
-function AddIMPartForm({ onClose }: { onClose: () => void }) {
-  const [name,       setName]       = useState("");
-  const [serial,     setSerial]     = useState("");
-  const [qty,        setQty]        = useState("");
-  const [min,        setMin]        = useState("");
+function AddIMPartForm({ initial, onClose, onSave }: { initial: Part | null; onClose: () => void; onSave: (p: Part) => void }) {
+  const isEdit = !!initial;
+  const [name,       setName]       = useState(initial?.name ?? "");
+  const [serial,     setSerial]     = useState(initial?.serial ?? "");
+  const [qty,        setQty]        = useState(initial ? String(initial.qty) : "");
+  const [min,        setMin]        = useState(initial ? String(initial.min) : "");
   const [taskName,   setTaskName]   = useState("");
   const [taskDesc,      setTaskDesc]      = useState("");
   const [maxTime,       setMaxTime]       = useState("");
@@ -191,10 +312,27 @@ function AddIMPartForm({ onClose }: { onClose: () => void }) {
     setCompQty("1");
   }
 
+  function handleSave() {
+    if (!name.trim()) return;
+    onSave({
+      id: initial?.id ?? crypto.randomUUID(),
+      name: name.trim(),
+      supplier: "—",
+      barcode: initial?.barcode ?? "",
+      serial: serial.trim(),
+      qty: parseFloat(qty) || 0,
+      min: parseFloat(min) || 0,
+      type: "Internally Manufactured",
+      reorder: initial?.reorder ?? false,
+      cost: initial?.cost ?? 0,
+      sale: initial?.sale ?? 0,
+    });
+  }
+
   return (
     <div style={f.panel}>
       <div style={f.header}>
-        <span style={f.headerTitle}>Add IM Part</span>
+        <span style={f.headerTitle}>{isEdit ? "Edit IM Part" : "Add IM Part"}</span>
         <button onClick={onClose} style={f.closeBtn}><X size={16} /></button>
       </div>
       <div style={f.body}>
@@ -262,7 +400,7 @@ function AddIMPartForm({ onClose }: { onClose: () => void }) {
       </div>
       <div style={f.footer}>
         <button onClick={onClose} style={f.cancelBtn}>Cancel</button>
-        <button style={f.saveBtn}>Add Part</button>
+        <button onClick={handleSave} style={f.saveBtn}>{isEdit ? "Save Changes" : "Add Part"}</button>
       </div>
     </div>
   );
@@ -320,14 +458,13 @@ const s: Record<string, React.CSSProperties> = {
   searchRow:    { padding: "12px 20px", borderBottom: "1px solid var(--border)" },
   search:       { width: 280, height: 36, border: "1px solid var(--input-border)", borderRadius: "var(--radius-sm)", padding: "0 12px", fontSize: 14, color: "var(--text-primary)", backgroundColor: "var(--bg)", outline: "none" },
   tableWrap:    { overflowX: "auto" },
-  table:        { width: "100%", borderCollapse: "collapse", minWidth: 900 },
+  table:        { width: "100%", borderCollapse: "collapse", minWidth: 980 },
   th:           { padding: "10px 14px", textAlign: "left", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", borderBottom: "1px solid var(--border)", backgroundColor: "var(--bg)", whiteSpace: "nowrap" },
   tr:           { borderBottom: "1px solid var(--border)" },
   td:           { padding: "11px 14px", fontSize: 13, color: "var(--text-primary)", whiteSpace: "nowrap" },
   supplierChip: { fontSize: 11, backgroundColor: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4, padding: "2px 6px" },
   alertCell:    { display: "flex", alignItems: "center", gap: 6 },
   dot:          { width: 10, height: 10, borderRadius: "50%", flexShrink: 0 },
-
 };
 
 /* ── Drawer / form styles ───────────────────────────────────────── */

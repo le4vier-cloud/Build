@@ -70,6 +70,7 @@ const s: Record<string, React.CSSProperties> = {
     color: "#6E6E73",
     fontWeight: 400,
     marginTop: -20,
+    fontFamily: "var(--font-geist-pixel-square)",
   },
   cards: {
     display: "flex",
@@ -105,10 +106,12 @@ const s: Record<string, React.CSSProperties> = {
     letterSpacing: "-0.02em",
     marginBottom: 4,
     whiteSpace: "nowrap",
+    fontFamily: "var(--font-geist-pixel-square)",
   },
   cardSub: {
     fontSize: 13,
     fontWeight: 400,
     lineHeight: 1.5,
+    fontFamily: "var(--font-geist-pixel-square)",
   },
 };
