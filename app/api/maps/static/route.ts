@@ -1,9 +1,11 @@
 import { NextRequest } from "next/server";
 
 export async function GET(request: NextRequest) {
-  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  // Server-only: this key must NOT be exposed to the browser. Google rejects
+  // referrer-restricted keys on server-side calls, so restrict it by API instead.
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
   if (!apiKey) {
-    return new Response("NEXT_PUBLIC_GOOGLE_MAPS_API_KEY not set", { status: 500 });
+    return new Response("GOOGLE_MAPS_API_KEY not set", { status: 500 });
   }
 
   // Forward all query params as-is, inject key server-side
