@@ -247,7 +247,7 @@ function SupplierMapBlock({ supplier }: { supplier: Supplier }) {
           draggable={false}
         />
       ) : (
-        <MapPlaceholder address="" />
+        <MapPlaceholder address={supplier.address} />
       )}
 
       {/* Pin */}
