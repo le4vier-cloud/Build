@@ -8,6 +8,7 @@ import {
   AlertCircle, ZapOff, Zap, Edit2,
 } from "lucide-react";
 import { ModuleLayout } from "@/components/ui/module-layout";
+import { RightPanel } from "@/components/ui/right-panel";
 
 /* ── Types ─────────────────────────────────────────────── */
 type Tool = {
@@ -83,10 +84,9 @@ const SEED_ALERTS: ServiceAlert[] = [
 
 /* ── Sub-nav ────────────────────────────────────────────── */
 const SUB_NAV = [
-  { key: "list",         label: "Tools",           icon: <Scissors size={15} strokeWidth={1.8} /> },
-  { key: "add",          label: "Add Tool",         icon: <Plus size={15} strokeWidth={2} /> },
-  { key: "service-book", label: "Service Book",     icon: <BookOpen size={15} strokeWidth={1.8} /> },
-  { key: "alerts",       label: "Service Alerts",   icon: <Bell size={15} strokeWidth={1.8} /> },
+  { key: "list",         label: "Tools",         icon: <Scissors size={15} strokeWidth={1.8} /> },
+  { key: "service-book", label: "Service Book",  icon: <BookOpen size={15} strokeWidth={1.8} /> },
+  { key: "alerts",       label: "Service Alerts",icon: <Bell     size={15} strokeWidth={1.8} /> },
 ];
 
 /* ── Helpers ────────────────────────────────────────────── */
@@ -160,48 +160,49 @@ function CostField({
 /* ═══════════════════════════════════════════════════════════
    Tool List
 ═══════════════════════════════════════════════════════════ */
-function ToolList({ tools, onSelect }: { tools: Tool[]; onSelect: (id: string) => void }) {
-  if (!tools.length) {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "48px 0", color: "var(--text-tertiary)" }}>
-        <Scissors size={32} strokeWidth={1.2} />
-        <p style={{ fontSize: 14 }}>No tools yet — add your first tool.</p>
-      </div>
-    );
-  }
+function ToolList({ tools, onSelect, onAdd }: { tools: Tool[]; onSelect: (id: string) => void; onAdd: () => void }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 680 }}>
-      {tools.map(tool => {
-        const hrWorking = tool.cost_per_min_working * 60;
-        const hrIdle    = tool.cost_per_min_idle * 60;
-        return (
-          <div key={tool.id}
-            style={{ backgroundColor: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: "16px 20px", display: "flex", alignItems: "center", gap: 20, cursor: "pointer", transition: "border-color 0.15s" }}
-            onClick={() => onSelect(tool.id)}
-            onMouseEnter={e => (e.currentTarget.style.borderColor = "var(--accent)")}
-            onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--border)")}
-          >
-            {/* Icon */}
-            <div style={{ width: 44, height: 44, borderRadius: "var(--radius-sm)", backgroundColor: "var(--surface)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <Scissors size={20} color="var(--accent)" strokeWidth={1.5} />
-            </div>
-
-            {/* Identity */}
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>{tool.name}</div>
-              <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>SN: {tool.serial_number}</div>
-            </div>
-
-            {/* Cost chips */}
-            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-              <CostChip icon={<ZapOff size={11} />} label="Idle" value={`R ${tool.cost_per_min_idle.toFixed(2)}/min`} color="var(--text-secondary)" bg="var(--surface)" />
-              <CostChip icon={<Zap size={11} />}    label="Working" value={`R ${tool.cost_per_min_working.toFixed(2)}/min`} color="#10B981" bg="rgba(16,185,129,0.08)" />
-            </div>
-
-            <ChevronRight size={16} color="var(--text-tertiary)" />
+      {tools.length === 0 && (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "48px 0", color: "var(--text-tertiary)" }}>
+          <Scissors size={32} strokeWidth={1.2} />
+          <p style={{ fontSize: 14 }}>No tools yet — add your first tool.</p>
+        </div>
+      )}
+      {tools.map(tool => (
+        <div key={tool.id}
+          style={{ backgroundColor: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: "16px 20px", display: "flex", alignItems: "center", gap: 20, cursor: "pointer", transition: "border-color 0.15s" }}
+          onClick={() => onSelect(tool.id)}
+          onMouseEnter={e => (e.currentTarget.style.borderColor = "var(--accent)")}
+          onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--border)")}
+        >
+          <div style={{ width: 44, height: 44, borderRadius: "var(--radius-sm)", backgroundColor: "var(--surface)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Scissors size={20} color="var(--accent)" strokeWidth={1.5} />
           </div>
-        );
-      })}
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>{tool.name}</div>
+            <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>SN: {tool.serial_number}</div>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+            <CostChip icon={<ZapOff size={11} />} label="Idle"    value={`R ${tool.cost_per_min_idle.toFixed(2)}/min`}    color="var(--text-secondary)" bg="var(--surface)" />
+            <CostChip icon={<Zap    size={11} />} label="Working" value={`R ${tool.cost_per_min_working.toFixed(2)}/min`} color="#10B981"                bg="rgba(16,185,129,0.08)" />
+          </div>
+          <ChevronRight size={16} color="var(--text-tertiary)" />
+        </div>
+      ))}
+      <button
+        onClick={onAdd}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+          width: "100%", padding: "10px", borderRadius: 8,
+          border: "1.5px dashed var(--border)", backgroundColor: "transparent",
+          color: "var(--text-secondary)", fontSize: 13, fontWeight: 500, cursor: "pointer",
+        }}
+        onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.color = "var(--accent)"; }}
+        onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-secondary)"; }}
+      >
+        <Plus size={15} /> Add Tool
+      </button>
     </div>
   );
 }
@@ -793,35 +794,33 @@ const iconBtn: React.CSSProperties = {
    Page
 ═══════════════════════════════════════════════════════════ */
 export default function ToolsPage() {
-  const [view, setView] = useState<string | null>(null);
-  const [tools, setTools] = useState<Tool[]>(SEED_TOOLS);
-  const [records, setRecords] = useState<ServiceRecord[]>(SEED_RECORDS);
-  const [alerts, setAlerts] = useState<ServiceAlert[]>(SEED_ALERTS);
+  const [view, setView]           = useState("list");
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [tools, setTools]         = useState<Tool[]>(SEED_TOOLS);
+  const [records, setRecords]     = useState<ServiceRecord[]>(SEED_RECORDS);
+  const [alerts, setAlerts]       = useState<ServiceAlert[]>(SEED_ALERTS);
 
   return (
-    <ModuleLayout title="Tools" subNav={SUB_NAV} activeView={view} onViewChange={setView}>
-      {view === "list" && (
-        <ToolList tools={tools} onSelect={() => {}} />
-      )}
-      {view === "add" && (
-        <AddToolForm onSave={t => { setTools(p => [...p, t]); setView("list"); }} />
-      )}
-      {view === "service-book" && (
-        <ServiceBook
-          tools={tools}
-          records={records}
-          onAdd={r => setRecords(p => [r, ...p])}
-        />
-      )}
-      {view === "alerts" && (
-        <ServiceAlerts
-          tools={tools}
-          alerts={alerts}
-          onAdd={a => setAlerts(p => [a, ...p])}
-          onToggle={id => setAlerts(p => p.map(a => a.id === id ? { ...a, active: !a.active } : a))}
-          onDelete={id => setAlerts(p => p.filter(a => a.id !== id))}
-        />
-      )}
-    </ModuleLayout>
+    <>
+      <ModuleLayout title="Tools" subNav={SUB_NAV} activeView={view} onViewChange={setView}>
+        {view === "list" && (
+          <ToolList tools={tools} onSelect={() => {}} onAdd={() => setPanelOpen(true)} />
+        )}
+        {view === "service-book" && (
+          <ServiceBook tools={tools} records={records} onAdd={r => setRecords(p => [r, ...p])} />
+        )}
+        {view === "alerts" && (
+          <ServiceAlerts
+            tools={tools} alerts={alerts}
+            onAdd={a => setAlerts(p => [a, ...p])}
+            onToggle={id => setAlerts(p => p.map(a => a.id === id ? { ...a, active: !a.active } : a))}
+            onDelete={id => setAlerts(p => p.filter(a => a.id !== id))}
+          />
+        )}
+      </ModuleLayout>
+      <RightPanel open={panelOpen} onClose={() => setPanelOpen(false)} title="Add Tool">
+        <AddToolForm onSave={t => { setTools(p => [...p, t]); setPanelOpen(false); }} />
+      </RightPanel>
+    </>
   );
 }

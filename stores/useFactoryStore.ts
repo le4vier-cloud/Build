@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import {
   FactoryZone, FactoryZoneNode, FactoryFlowPath,
-  FactoryWall,
+  FactoryWall, WorkflowAttachment,
 } from "@/types/factory";
 
 const MAX_HISTORY = 50;
@@ -19,6 +19,7 @@ interface FactoryStore {
   edges:    FactoryFlowPath[];
   walls:    FactoryWall[];
   selectedNodeId: string | null;
+  planAttachments: WorkflowAttachment[];
 
   /* ── History ── */
   canUndo: boolean;
@@ -29,23 +30,28 @@ interface FactoryStore {
   updateZone:          (id: string, updates: Partial<Omit<FactoryZone, "id">>) => void;
   removeZone:          (zoneId: string) => void;
   updateNodePosition:  (nodeId: string, pos: { x: number; y: number }) => void;
-  /** Move any mix of zone-nodes and walls in one history step */
   batchMoveNodes:      (moves: Array<{ id: string; position: { x: number; y: number } }>) => void;
   updateNodeDimensions:(nodeId: string, dims: { width: number; height: number }) => void;
   resizeNode:          (nodeId: string, pos: { x: number; y: number }, dims: { width: number; height: number }) => void;
   setSelectedNode:     (nodeId: string | null) => void;
 
   /* ── Wall / Walkway actions ── */
-  addWall:    (wall: Omit<FactoryWall, "id">) => void;
-  updateWall: (id: string, updates: Partial<Omit<FactoryWall, "id">>) => void;
-  removeWall: (id: string) => void;
-  resizeWall: (id: string, pos: { x: number; y: number }, dims: { width: number; height: number }) => void;
+  addWall:        (wall: Omit<FactoryWall, "id">) => void;
+  updateWall:     (id: string, updates: Partial<Omit<FactoryWall, "id">>) => void;
+  removeWall:     (id: string) => void;
+  batchMoveWalls: (moves: Array<{ id: string; dx: number; dy: number }>) => void;
 
   /* ── Flow path actions ── */
-  addFlowPath:  (path: Omit<FactoryFlowPath, "id">) => void;
+  addFlowPath:   (path: Omit<FactoryFlowPath, "id">) => void;
   removeFlowPath:(pathId: string) => void;
 
+  /* ── Plan overlay attachments ── */
+  addAttachment:    (att: WorkflowAttachment) => void;
+  removeAttachment: (workflowId: string, planId: string) => void;
+  clearAttachments: () => void;
+
   clearFloor: () => void;
+  loadSnapshot: (snap: HistorySnapshot & { planAttachments?: WorkflowAttachment[] }) => void;
 
   /* Internal */
   _history: HistorySnapshot[];
@@ -53,7 +59,6 @@ interface FactoryStore {
 
 export const useFactoryStore = create<FactoryStore>((set, get) => {
 
-  /* ── Save a snapshot of current mutable data ── */
   const pushHistory = () => {
     const { zones, nodes, edges, walls } = get();
     const snap: HistorySnapshot = { zones, nodes, edges, walls };
@@ -69,6 +74,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => {
     edges: [],
     walls: [],
     selectedNodeId: null,
+    planAttachments: [],
     _history: [],
     canUndo: false,
 
@@ -122,6 +128,10 @@ export const useFactoryStore = create<FactoryStore>((set, get) => {
           const removedIds = s.nodes.filter((n) => n.zoneId === zoneId).map((n) => n.id);
           return !removedIds.includes(e.sourceId) && !removedIds.includes(e.targetId);
         }),
+        planAttachments: s.planAttachments.filter((a) => {
+          const removedIds = s.nodes.filter((n) => n.zoneId === zoneId).map((n) => n.id);
+          return !removedIds.includes(a.zoneNodeId);
+        }),
         selectedNodeId: null,
       }));
     },
@@ -133,18 +143,12 @@ export const useFactoryStore = create<FactoryStore>((set, get) => {
       }));
     },
 
-    /* One history entry for the entire multi-node drag — zones and walls
-       are updated together so their relative layout is preserved on undo. */
     batchMoveNodes: (moves) => {
       pushHistory();
       set((s) => ({
         nodes: s.nodes.map((n) => {
           const m = moves.find((mv) => mv.id === n.id);
           return m ? { ...n, position: m.position } : n;
-        }),
-        walls: s.walls.map((w) => {
-          const m = moves.find((mv) => mv.id === w.id);
-          return m ? { ...w, position: m.position } : w;
         }),
       }));
     },
@@ -156,8 +160,6 @@ export const useFactoryStore = create<FactoryStore>((set, get) => {
       }));
     },
 
-    /* Atomic resize: updates position + dimensions in one set() call so the
-       canvas doesn't flicker when pulling a left or top handle. */
     resizeNode: (nodeId, pos, dims) => {
       pushHistory();
       set((s) => ({
@@ -194,19 +196,16 @@ export const useFactoryStore = create<FactoryStore>((set, get) => {
       }));
     },
 
-    /* Atomic wall resize — recalculates length + thickness from new width/height
-       based on orientation so the semantics stay consistent. */
-    resizeWall: (id, pos, dims) => {
+    batchMoveWalls: (moves) => {
       pushHistory();
       set((s) => ({
         walls: s.walls.map((w) => {
-          if (w.id !== id) return w;
-          const isH = w.orientation === "horizontal";
+          const m = moves.find((mv) => mv.id === w.id);
+          if (!m) return w;
           return {
             ...w,
-            position:  pos,
-            length:    isH ? dims.width  : dims.height,
-            thickness: isH ? dims.height : dims.width,
+            start: { x: w.start.x + m.dx, y: w.start.y + m.dy },
+            end:   { x: w.end.x   + m.dx, y: w.end.y   + m.dy },
           };
         }),
       }));
@@ -227,9 +226,38 @@ export const useFactoryStore = create<FactoryStore>((set, get) => {
       }));
     },
 
+    /* ── Plan overlay attachments ─────────────────── */
+    addAttachment: (att) => {
+      set((s) => {
+        // Replace if same workflow+plan already attached somewhere
+        const without = s.planAttachments.filter(
+          (a) => !(a.workflowId === att.workflowId && a.planId === att.planId)
+        );
+        return { planAttachments: [...without, att] };
+      });
+    },
+
+    removeAttachment: (workflowId, planId) => {
+      set((s) => ({
+        planAttachments: s.planAttachments.filter(
+          (a) => !(a.workflowId === workflowId && a.planId === planId)
+        ),
+      }));
+    },
+
+    clearAttachments: () => set({ planAttachments: [] }),
+
     clearFloor: () => {
       pushHistory();
-      set({ zones: [], nodes: [], edges: [], walls: [], selectedNodeId: null });
+      set({ zones: [], nodes: [], edges: [], walls: [], planAttachments: [], selectedNodeId: null });
+    },
+
+    loadSnapshot: (snap) => {
+      set({
+        zones: snap.zones, nodes: snap.nodes, edges: snap.edges, walls: snap.walls,
+        planAttachments: snap.planAttachments ?? [],
+        selectedNodeId: null, _history: [], canUndo: false,
+      });
     },
   };
 });

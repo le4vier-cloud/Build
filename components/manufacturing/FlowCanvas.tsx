@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   ReactFlow,
   Background,
@@ -13,204 +13,122 @@ import {
   Node,
   Edge,
   BackgroundVariant,
-  Panel,
-  type NodeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useManufacturingStore } from "@/stores/useManufacturingStore";
-import { StationNodeComponent } from "./StationNodeComponent";
+import { useDarkMode, FACTORY_DARK, FACTORY_LIGHT } from "@/components/factory/FactoryFloorBuilder";
 import { StartEndNode } from "./StartEndNode";
+import { WorkflowNode } from "./WorkflowNode";
 
 const nodeTypes = {
-  station: StationNodeComponent,
   startEnd: StartEndNode,
+  workflowNode: WorkflowNode,
 };
 
+const EDGE_STYLE = { stroke: "#F56300", strokeWidth: 2 };
+const EDGE_MARKER = { type: "arrowclosed" as const, color: "#F56300" };
+
+const GAP_X  = 310;
+const ORIG_X  = 60;
+const ORIG_Y  = 130;
+
 export const FlowCanvas = () => {
-  const {
-    stationNodes, stations, currentProcess,
-    updateStationPosition, removeStationNode, calculateTiming, getNodeDuration,
-  } = useManufacturingStore();
+  const isDark = useDarkMode();
+  const t = isDark ? FACTORY_DARK : FACTORY_LIGHT;
+  const { workflows, tasks } = useManufacturingStore();
+  const edgesInitRef = useRef(false);
 
-  const [startPos, setStartPos] = useState({ x: 60, y: 220 });
-  const [endPos,   setEndPos]   = useState({ x: 900, y: 220 });
-
+  /* ── Build nodes from store ──────────────────────────────────── */
   const buildNodes = (): Node[] => [
     {
       id: "start",
       type: "startEnd",
-      position: startPos,
+      position: { x: ORIG_X, y: ORIG_Y + 50 },
       data: { label: "Start", type: "start" },
       draggable: true,
     },
-    ...stationNodes.map((node) => ({
-      id: node.id,
-      type: "station" as const,
-      position: node.position,
-      data: { stationNode: node },
+    ...workflows.map((wf, i) => ({
+      id: `wf-${wf.id}`,
+      type: "workflowNode" as const,
+      position: { x: ORIG_X + 180 + i * GAP_X, y: ORIG_Y },
+      data: {
+        workflow: wf,
+        tasks: [...tasks]
+          .filter(t => wf.taskIds.includes(t.id))
+          .sort((a, b) => wf.taskIds.indexOf(a.id) - wf.taskIds.indexOf(b.id)),
+      },
+      draggable: true,
     })),
     {
       id: "end",
       type: "startEnd",
-      position: endPos,
+      position: { x: ORIG_X + 180 + workflows.length * GAP_X, y: ORIG_Y + 50 },
       data: { label: "End", type: "end" },
       draggable: true,
     },
   ];
 
+  /* ── Default sequential edges ────────────────────────────────── */
+  const buildDefaultEdges = (): Edge[] => {
+    if (workflows.length === 0) {
+      return [{ id: "s-e", source: "start", target: "end", style: EDGE_STYLE, markerEnd: EDGE_MARKER }];
+    }
+    const edges: Edge[] = [
+      { id: "s-w0", source: "start", target: `wf-${workflows[0].id}`, style: EDGE_STYLE, markerEnd: EDGE_MARKER },
+    ];
+    workflows.slice(0, -1).forEach((wf, i) => {
+      edges.push({ id: `w${i}-w${i + 1}`, source: `wf-${wf.id}`, target: `wf-${workflows[i + 1].id}`, style: EDGE_STYLE, markerEnd: EDGE_MARKER });
+    });
+    edges.push({ id: "wl-e", source: `wf-${workflows[workflows.length - 1].id}`, target: "end", style: EDGE_STYLE, markerEnd: EDGE_MARKER });
+    return edges;
+  };
+
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes());
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
-  /* Sync store → canvas whenever stationNodes change */
+  /* Sync node content when workflows/tasks change, preserving user positions */
   useEffect(() => {
-    setNodes(buildNodes());
-    calculateTiming();
-    // Push end-node rightward when stations are added
-    if (stationNodes.length > 0) {
-      const rightmost = stationNodes.reduce(
-        (max, n) => (n.position.x > max ? n.position.x : max),
-        0
-      );
-      setEndPos({ x: Math.max(rightmost + 280, 900), y: 220 });
+    setNodes(prev => {
+      const posMap = new Map(prev.map(n => [n.id, n.position]));
+      return buildNodes().map(n => ({ ...n, position: posMap.get(n.id) ?? n.position }));
+    });
+    /* Set default edges only on first non-empty workflows load */
+    if (!edgesInitRef.current && workflows.length > 0) {
+      setEdges(buildDefaultEdges());
+      edgesInitRef.current = true;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stationNodes]);
-
-  /* Intercept RF's built-in delete (Del key) and sync removal to the store.
-     Without this, RF removes the node from its local state but the Zustand store
-     still contains it — so the next setNodes(buildNodes()) call brings it back. */
-  const handleNodesChange = useCallback(
-    (changes: NodeChange[]) => {
-      changes.forEach((change) => {
-        if (
-          change.type === "remove" &&
-          change.id !== "start" &&
-          change.id !== "end"
-        ) {
-          removeStationNode(change.id);
-        }
-      });
-      onNodesChange(changes);
-    },
-    [onNodesChange, removeStationNode]
-  );
+  }, [workflows, tasks]);
 
   const onConnect = useCallback(
-    (connection: Connection) => {
-      setEdges((eds) =>
-        addEdge(
-          {
-            ...connection,
-            animated: false,
-            style: { stroke: "#F56300", strokeWidth: 2 },
-            markerEnd: { type: "arrowclosed" as const, color: "#F56300" },
-          },
-          eds
-        )
-      );
-    },
-    [setEdges]
+    (connection: Connection) =>
+      setEdges(eds => addEdge({ ...connection, style: EDGE_STYLE, markerEnd: EDGE_MARKER }, eds)),
+    [setEdges],
   );
-
-  const onNodeDragStop = useCallback(
-    (_event: unknown, node: Node) => {
-      if (node.type === "station") {
-        updateStationPosition(node.id, node.position);
-      } else if (node.id === "start") {
-        setStartPos(node.position);
-      } else if (node.id === "end") {
-        setEndPos(node.position);
-      }
-    },
-    [updateStationPosition]
-  );
-
-  const bottleneckStation = (() => {
-    if (!currentProcess?.criticalPath.length) return null;
-    const id = currentProcess.criticalPath[0];
-    const st = stations.find((s) => s.id === id);
-    const node = stationNodes.find((n) => n.stationId === id);
-    if (!st || !node) return null;
-    const dur = getNodeDuration(node);
-    return { name: st.name, duration: dur };
-  })();
 
   return (
-    <div style={{ width: "100%", height: "100%", backgroundColor: "#FAFAFA" }}>
+    <div style={{ width: "100%", height: "100%", backgroundColor: t.canvasBg }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={handleNodesChange}
+        onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        onNodeDragStop={onNodeDragStop}
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.3 }}
         proOptions={{ hideAttribution: true }}
+        deleteKeyCode="Delete"
+        style={{ backgroundColor: t.canvasBg }}
       >
-        <Background
-          variant={BackgroundVariant.Dots}
-          gap={22}
-          size={1.2}
-          color="#D1D1D6"
-        />
-        <Controls
-          style={{
-            backgroundColor: "#FFFFFF",
-            border: "1px solid #E5E5EA",
-            borderRadius: 8,
-            boxShadow: "0 1px 6px rgba(0,0,0,0.06)",
-          }}
-        />
+        <Background id="minor" variant={BackgroundVariant.Lines} gap={20} lineWidth={0.4} color={t.gridMinor} style={{ backgroundColor: t.canvasBg }} />
+        <Background id="major" variant={BackgroundVariant.Lines} gap={100} lineWidth={0.8} color={t.gridMajor} />
+        <Controls style={{ backgroundColor: t.panelBg, border: `1px solid ${t.border}`, borderRadius: 8 }} />
         <MiniMap
-          style={{
-            backgroundColor: "#FFFFFF",
-            border: "1px solid #E5E5EA",
-            borderRadius: 8,
-          }}
-          nodeColor={(node) => {
-            if (node.type === "startEnd") return "#F56300";
-            return "#E5E5EA";
-          }}
-          maskColor="rgba(245,245,247,0.7)"
+          style={{ backgroundColor: t.statusBg, border: `1px solid ${t.border}`, borderRadius: 8 }}
+          nodeColor={n => n.type === "startEnd" ? "#F56300" : t.panelBg}
+          maskColor={isDark ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.06)"}
         />
-
-        {/* Bottleneck banner */}
-        {bottleneckStation && (
-          <Panel position="top-center">
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "6px 14px",
-                backgroundColor: "#FFF0E6",
-                border: "1px solid #F56300",
-                borderRadius: 999,
-                fontSize: 12,
-                fontWeight: 600,
-                color: "#C44D00",
-                boxShadow: "0 2px 8px rgba(245,99,0,0.15)",
-              }}
-            >
-              <span style={{ fontSize: 14 }}>⚡</span>
-              Bottleneck: {bottleneckStation.name}
-              <span
-                style={{
-                  backgroundColor: "#F56300",
-                  color: "#fff",
-                  borderRadius: 4,
-                  padding: "1px 7px",
-                  fontWeight: 700,
-                  fontSize: 11,
-                }}
-              >
-                {bottleneckStation.duration} min
-              </span>
-            </div>
-          </Panel>
-        )}
       </ReactFlow>
     </div>
   );

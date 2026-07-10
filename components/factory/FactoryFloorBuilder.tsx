@@ -22,17 +22,20 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { useFactoryStore } from "@/stores/useFactoryStore";
+import { usePlanOverlayStore } from "@/stores/usePlanOverlayStore";
 import { FactoryZoneNode  } from "@/components/factory/FactoryZoneNode";
 import { FactoryWallNode  } from "@/components/factory/FactoryWallNode";
+import { WallHandleNode   } from "@/components/factory/WallHandleNode";
 import {
   ZONE_COLORS, ZONE_LABELS, ZoneType,
   WALL_CONFIG, WallType,
-  type FactoryZone, type FactoryWall,
+  type FactoryZone, type FactoryWall, type WorkflowAttachment,
+  type FactoryZoneNode as FactoryZoneNodeData, type FactoryFlowPath,
 } from "@/types/factory";
 import {
   MousePointer2, Square, Spline, Maximize2, Minimize2,
   Building2, X, Plus, Save, RotateCcw, Undo2, Keyboard,
-  Minus, Footprints, Cog,
+  Minus, Footprints, Cog, Lock, PenLine, ArrowLeft, GitBranch,
 } from "lucide-react";
 import { Cpu, Wrench, Archive, Truck, Briefcase, Package, Send } from "lucide-react";
 
@@ -65,6 +68,14 @@ export const FACTORY_LIGHT: Theme = {
   btnGhostBg: "transparent", btnGhostText: "#6E6E73",
 };
 
+export interface FactorySnapshot {
+  zones:           FactoryZone[];
+  nodes:           FactoryZoneNodeData[];
+  edges:           FactoryFlowPath[];
+  walls:           FactoryWall[];
+  planAttachments?: WorkflowAttachment[];
+}
+
 export function useDarkMode() {
   const [dark, setDark] = useState(false);
   useEffect(() => {
@@ -96,10 +107,24 @@ const ZONE_ICON: Record<ZoneType, React.ReactNode> = {
 const nodeTypes = {
   factoryZone: FactoryZoneNode,
   factoryWall: FactoryWallNode,
+  wallHandle:  WallHandleNode,
 };
 
-type ToolMode    = "select" | "add" | "connect" | "wall" | "walkway";
-type Orientation = "horizontal" | "vertical";
+type ToolMode = "select" | "add" | "connect" | "wall" | "walkway";
+
+/* ── Wall geometry helper ────────────────────────── */
+function wallGeom(w: FactoryWall) {
+  const dx    = w.end.x - w.start.x;
+  const dy    = w.end.y - w.start.y;
+  const len   = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+  const angle = Math.atan2(dy, dx);
+  const ca    = Math.abs(Math.cos(angle));
+  const sa    = Math.abs(Math.sin(angle));
+  const aabbW = Math.max(w.thickness, Math.ceil(ca * len + sa * w.thickness));
+  const aabbH = Math.max(w.thickness, Math.ceil(sa * len + ca * w.thickness));
+  const mid   = { x: (w.start.x + w.end.x) / 2, y: (w.start.y + w.end.y) / 2 };
+  return { len, angle, aabbW, aabbH, mid };
+}
 
 /* ── Context menu helpers ────────────────────────── */
 type CtxKind = "zone" | "wall" | "canvas";
@@ -191,32 +216,33 @@ function CtxLabel({ children, t }: { children: React.ReactNode; t: Theme }) {
 ══════════════════════════════════════════════════ */
 function FactoryCanvasInner({
   toolMode, addZoneType, onAddZoneTypeUsed,
-  wallOrientation, onOpenAddZoneDialog, onMousePosChange,
-  onToolModeChange, onAddZoneTypeChange, onWallOrientationToggle,
-  onToggleFullscreen, undo,
+  onOpenAddZoneDialog, onMousePosChange,
+  onToolModeChange, onAddZoneTypeChange,
+  onToggleFullscreen, undo, editMode,
   t,
 }: {
-  toolMode:                ToolMode;
-  addZoneType:             ZoneType | null;
-  onAddZoneTypeUsed:       () => void;
-  wallOrientation:         Orientation;
-  onOpenAddZoneDialog:     () => void;
-  onMousePosChange:        (x: number, y: number) => void;
-  onToolModeChange:        (mode: ToolMode) => void;
-  onAddZoneTypeChange:     (type: ZoneType | null) => void;
-  onWallOrientationToggle: () => void;
-  onToggleFullscreen:      () => void;
-  undo:                    () => void;
-  t:                       Theme;
+  toolMode:            ToolMode;
+  addZoneType:         ZoneType | null;
+  onAddZoneTypeUsed:   () => void;
+  onOpenAddZoneDialog: () => void;
+  onMousePosChange:    (x: number, y: number) => void;
+  onToolModeChange:    (mode: ToolMode) => void;
+  onAddZoneTypeChange: (type: ZoneType | null) => void;
+  onToggleFullscreen:  () => void;
+  undo:                () => void;
+  editMode:            boolean;
+  t:                   Theme;
 }) {
   const { screenToFlowPosition, fitView, zoomIn, zoomOut } = useReactFlow();
   const { zoom } = useViewport();
 
   const {
-    zones, nodes: storeNodes, edges: storeEdges, walls,
-    addZone, removeZone, updateNodePosition, batchMoveNodes, setSelectedNode, addFlowPath,
+    zones, nodes: storeNodes, edges: storeEdges, walls, planAttachments,
+    addZone, removeZone, batchMoveNodes, batchMoveWalls, setSelectedNode, addFlowPath,
     addWall, removeWall, updateWall,
   } = useFactoryStore();
+
+  const { plans: overlayPlans } = usePlanOverlayStore();
 
   type ClipEntry =
     | { kind: "zone"; zone: FactoryZone; pos: { x: number; y: number }; width: number; height: number }
@@ -240,23 +266,52 @@ function FactoryCanvasInner({
     return () => { window.removeEventListener("pointerdown", onDown); window.removeEventListener("keydown", onKey); };
   }, [ctxMenu]);
 
+  /* ── Build ReactFlow nodes ── */
   const buildRfNodes = (): Node[] => [
     ...storeNodes.map((n) => {
-      const zone = zones.find((z) => z.id === n.zoneId);
+      const zone     = zones.find((z) => z.id === n.zoneId);
       if (!zone) return null!;
-      return { id: n.id, type: "factoryZone", position: n.position, data: { zone }, style: { width: n.width, height: n.height } } as Node;
+      const attached = planAttachments.filter((a) => a.zoneNodeId === n.id);
+      return {
+        id: n.id, type: "factoryZone", position: n.position,
+        data: { zone, attachedWorkflows: attached },
+        style: { width: n.width, height: n.height },
+      } as Node;
     }).filter(Boolean),
-    ...walls.map((w) => ({
-      id: w.id, type: "factoryWall", position: w.position, data: { wall: w },
-      style: {
-        width:  w.orientation === "horizontal" ? w.length    : w.thickness,
-        height: w.orientation === "horizontal" ? w.thickness : w.length,
-      },
-    } as Node)),
+    ...walls.flatMap((w): Node[] => {
+      const { len, angle, aabbW, aabbH, mid } = wallGeom(w);
+      return [
+        /* Wall body node — AABB bounding box, inner div is CSS-rotated */
+        {
+          id: w.id, type: "factoryWall",
+          position: { x: mid.x - aabbW / 2, y: mid.y - aabbH / 2 },
+          data: { wall: w, wallLength: len, angle },
+          style: { width: aabbW, height: aabbH },
+          selectable: true, draggable: true,
+        } as Node,
+        /* Start endpoint handle */
+        {
+          id: `wh-s-${w.id}`, type: "wallHandle",
+          position: { x: w.start.x - 6, y: w.start.y - 6 },
+          data: { wallId: w.id, which: "start" },
+          selectable: false, deletable: false,
+          style: { width: 12, height: 12 },
+        } as Node,
+        /* End endpoint handle */
+        {
+          id: `wh-e-${w.id}`, type: "wallHandle",
+          position: { x: w.end.x - 6, y: w.end.y - 6 },
+          data: { wallId: w.id, which: "end" },
+          selectable: false, deletable: false,
+          style: { width: 12, height: 12 },
+        } as Node,
+      ];
+    }),
   ];
 
-  const buildRfEdges = (): Edge[] =>
-    storeEdges.map((e) => ({
+  /* ── Build ReactFlow edges (flow paths + overlay plan edges) ── */
+  const buildRfEdges = (): Edge[] => {
+    const baseEdges: Edge[] = storeEdges.map((e) => ({
       id: e.id, source: e.sourceId, target: e.targetId,
       label: e.label ?? e.pathType,
       animated: e.pathType === "conveyor" || e.pathType === "agv",
@@ -266,28 +321,71 @@ function FactoryCanvasInner({
       labelBgStyle: { fill: t.panelBg, fillOpacity: 0.85 },
     }));
 
+    /* Overlay sequence edges — workflow A → workflow B across zones */
+    const overlayEdges: Edge[] = [];
+    if (planAttachments.length > 0) {
+      overlayPlans.forEach((plan) => {
+        plan.workflows.forEach((wf, i) => {
+          if (i >= plan.workflows.length - 1) return;
+          const nextWf  = plan.workflows[i + 1];
+          const srcAtt  = planAttachments.find((a) => a.workflowId === wf.id    && a.planId === plan.id);
+          const dstAtt  = planAttachments.find((a) => a.workflowId === nextWf.id && a.planId === plan.id);
+          if (!srcAtt || !dstAtt || srcAtt.zoneNodeId === dstAtt.zoneNodeId) return;
+          /* Check whether a walkway/flow-path already connects these zones */
+          const hasPath = storeEdges.some(
+            (e) =>
+              (e.sourceId === srcAtt.zoneNodeId && e.targetId === dstAtt.zoneNodeId) ||
+              (e.sourceId === dstAtt.zoneNodeId && e.targetId === srcAtt.zoneNodeId),
+          );
+          overlayEdges.push({
+            id:     `overlay-${plan.id}-${i}`,
+            source: srcAtt.zoneNodeId,
+            target: dstAtt.zoneNodeId,
+            label:  `${wf.name} → ${nextWf.name}`,
+            style:  {
+              stroke:          wf.color,
+              strokeWidth:     2,
+              strokeDasharray: hasPath ? undefined : "6 3",
+            },
+            markerEnd:    { type: "arrowclosed" as const, color: wf.color },
+            labelStyle:   { fontSize: 9, fill: wf.color, fontWeight: 700, fontFamily: "monospace" },
+            labelBgStyle: { fill: t.panelBg, fillOpacity: 0.9 },
+            zIndex:       100,
+          });
+        });
+      });
+    }
+
+    return [...baseEdges, ...overlayEdges];
+  };
+
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState(buildRfNodes());
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState(buildRfEdges());
 
-  useEffect(() => { setRfNodes(buildRfNodes()); }, [storeNodes, zones, walls]);
-  useEffect(() => { setRfEdges(buildRfEdges()); }, [storeEdges]);
+  useEffect(() => { setRfNodes(buildRfNodes()); }, [storeNodes, zones, walls, planAttachments]);
+  useEffect(() => { setRfEdges(buildRfEdges()); }, [storeEdges, planAttachments, overlayPlans]);
   useEffect(() => { if (storeNodes.length > 0 || walls.length > 0) fitView({ padding: 0.2 }); }, []);
 
+  /* ── Node change handler — guard handle nodes from deletion ── */
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
       changes.forEach((ch) => {
-        if (ch.type === "remove") {
+        if (ch.type === "remove" && !ch.id.startsWith("wh-")) {
           const sn = storeNodes.find((n) => n.id === ch.id);
           if (sn) { removeZone(sn.zoneId); return; }
           const wall = walls.find((w) => w.id === ch.id);
           if (wall) removeWall(wall.id);
         }
       });
-      onNodesChange(changes);
+      const filtered = changes.filter(
+        (ch) => !(ch.type === "remove" && ch.id.startsWith("wh-")),
+      );
+      onNodesChange(filtered);
     },
-    [onNodesChange, storeNodes, removeZone, walls, removeWall]
+    [onNodesChange, storeNodes, removeZone, walls, removeWall],
   );
 
+  /* ── Node helpers ── */
   const duplicateNodeById = useCallback((nodeId: string) => {
     const sn = storeNodes.find((n) => n.id === nodeId);
     if (sn) {
@@ -301,47 +399,52 @@ function FactoryCanvasInner({
     }
     const wall = walls.find((w) => w.id === nodeId);
     if (wall) addWall({
-      wallType: wall.wallType, orientation: wall.orientation,
-      position: { x: Math.round((wall.position.x + 20) / 20) * 20, y: Math.round((wall.position.y + 20) / 20) * 20 },
-      length: wall.length, thickness: wall.thickness,
+      wallType: wall.wallType,
+      start:    { x: Math.round((wall.start.x + 20) / 20) * 20, y: Math.round((wall.start.y + 20) / 20) * 20 },
+      end:      { x: Math.round((wall.end.x   + 20) / 20) * 20, y: Math.round((wall.end.y   + 20) / 20) * 20 },
+      thickness: wall.thickness,
     });
   }, [storeNodes, zones, walls, addZone, addWall]);
 
   const deleteNodeById = useCallback((nodeId: string) => {
+    if (nodeId.startsWith("wh-")) return;
     const sn = storeNodes.find((n) => n.id === nodeId);
     if (sn) { removeZone(sn.zoneId); return; }
     const wall = walls.find((w) => w.id === nodeId);
     if (wall) removeWall(wall.id);
-  }, [storeNodes, zones, walls, removeZone, removeWall]);
+  }, [storeNodes, walls, removeZone, removeWall]);
 
-  const flipWallOrientation = useCallback((wallId: string) => {
+  /* Rotate wall 90° around its midpoint */
+  const rotateWall90 = useCallback((wallId: string) => {
     const w = walls.find((x) => x.id === wallId);
     if (!w) return;
-    const isH = w.orientation === "horizontal";
-    const newOri: Orientation = isH ? "vertical" : "horizontal";
-    const cx = w.position.x + (isH ? w.length    : w.thickness) / 2;
-    const cy = w.position.y + (isH ? w.thickness : w.length)    / 2;
-    const nw = isH ? w.thickness : w.length;
-    const nh = isH ? w.length    : w.thickness;
+    const cx = (w.start.x + w.end.x) / 2;
+    const cy = (w.start.y + w.end.y) / 2;
+    const snap = (v: number) => Math.round(v / 20) * 20;
     updateWall(wallId, {
-      orientation: newOri,
-      position: { x: Math.round((cx - nw / 2) / 20) * 20, y: Math.round((cy - nh / 2) / 20) * 20 },
+      start: { x: snap(cx - (w.start.y - cy)), y: snap(cy + (w.start.x - cx)) },
+      end:   { x: snap(cx - (w.end.y   - cy)), y: snap(cy + (w.end.x   - cx)) },
     });
   }, [walls, updateWall]);
 
+  /* ── Clipboard ── */
   const doPaste = useCallback((off: number) => {
     clipboardRef.current.forEach((entry) => {
-      const px = Math.round((entry.pos.x + off) / 20) * 20;
-      const py = Math.round((entry.pos.y + off) / 20) * 20;
       if (entry.kind === "zone") {
-        const { zone, width, height } = entry;
+        const px = Math.round((entry.pos.x + off) / 20) * 20;
+        const py = Math.round((entry.pos.y + off) / 20) * 20;
         addZone(
-          { name: zone.name, type: zone.type, description: zone.description, capacity: zone.capacity },
+          { name: entry.zone.name, type: entry.zone.type, description: entry.zone.description, capacity: entry.zone.capacity },
           { x: px, y: py },
-          { width, height },
+          { width: entry.width, height: entry.height },
         );
       } else {
-        addWall({ ...entry.wall, position: { x: px, y: py } });
+        addWall({
+          wallType:  entry.wall.wallType,
+          start:     { x: Math.round((entry.wall.start.x + off) / 20) * 20, y: Math.round((entry.wall.start.y + off) / 20) * 20 },
+          end:       { x: Math.round((entry.wall.end.x   + off) / 20) * 20, y: Math.round((entry.wall.end.y   + off) / 20) * 20 },
+          thickness: entry.wall.thickness,
+        });
       }
     });
   }, [addZone, addWall]);
@@ -359,7 +462,7 @@ function FactoryCanvasInner({
       if (n.type === "factoryWall") {
         const wall = walls.find((w) => w.id === n.id);
         if (!wall) return [];
-        return [{ kind: "wall", wall: { wallType: wall.wallType, orientation: wall.orientation, position: wall.position, length: wall.length, thickness: wall.thickness }, pos: wall.position }];
+        return [{ kind: "wall", wall: { wallType: wall.wallType, start: wall.start, end: wall.end, thickness: wall.thickness }, pos: wall.start }];
       }
       return [];
     });
@@ -381,24 +484,26 @@ function FactoryCanvasInner({
         const wall = walls.find((w) => w.id === n.id);
         if (!wall) return;
         addWall({
-          wallType: wall.wallType, orientation: wall.orientation,
-          position: { x: Math.round((wall.position.x + 20) / 20) * 20, y: Math.round((wall.position.y + 20) / 20) * 20 },
-          length: wall.length, thickness: wall.thickness,
+          wallType:  wall.wallType,
+          start:     { x: Math.round((wall.start.x + 20) / 20) * 20, y: Math.round((wall.start.y + 20) / 20) * 20 },
+          end:       { x: Math.round((wall.end.x   + 20) / 20) * 20, y: Math.round((wall.end.y   + 20) / 20) * 20 },
+          thickness: wall.thickness,
         });
       }
     });
   }, [rfNodes, storeNodes, zones, walls, addZone, addWall]);
 
-  const deleteSelected = useCallback(() => {
+  const deleteSelected  = useCallback(() => {
     rfNodes.filter((n) => n.selected).forEach((n) => deleteNodeById(n.id));
   }, [rfNodes, deleteNodeById]);
 
-  const flipSelected = useCallback(() => {
+  const rotateSelected  = useCallback(() => {
     rfNodes
       .filter((n) => n.selected && n.type === "factoryWall")
-      .forEach((n) => flipWallOrientation(n.id));
-  }, [rfNodes, flipWallOrientation]);
+      .forEach((n) => rotateWall90(n.id));
+  }, [rfNodes, rotateWall90]);
 
+  /* ── Keyboard shortcuts ── */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (
@@ -427,24 +532,25 @@ function FactoryCanvasInner({
       if (cmd && e.key === "c") { e.preventDefault(); copySelected(); return; }
       if (cmd && e.key === "v") {
         e.preventDefault();
-        if (!clipboardRef.current.length) return;
+        if (!clipboardRef.current.length || !editMode) return;
         pasteCountRef.current++;
         doPaste(pasteCountRef.current * 20);
         return;
       }
-      if (cmd && e.key === "d") { e.preventDefault(); duplicateSelected(); return; }
-      if (e.key === "Backspace" || e.key === "Delete") { deleteSelected(); return; }
-      if (cmd && (e.key === "f" || e.key === "F")) { e.preventDefault(); flipSelected(); return; }
+      if (cmd && e.key === "d") { e.preventDefault(); if (editMode) duplicateSelected(); return; }
+      if ((e.key === "Backspace" || e.key === "Delete") && editMode) { deleteSelected(); return; }
+      if (cmd && (e.key === "f" || e.key === "F")) { e.preventDefault(); if (editMode) rotateSelected(); return; }
 
       if (!cmd) {
         if (e.key === "v" || e.key === "V" || e.key === "Escape") {
           onToolModeChange("select"); onAddZoneTypeChange(null);
         }
-        if (e.key === "s" || e.key === "S") onOpenAddZoneDialog();
-        if (e.key === "c" || e.key === "C") onToolModeChange("connect");
-        if (e.key === "w" || e.key === "W") onToolModeChange("wall");
-        if (e.key === "k" || e.key === "K") onToolModeChange("walkway");
-        if (e.key === "o" || e.key === "O") onWallOrientationToggle();
+        if (editMode) {
+          if (e.key === "s" || e.key === "S") onOpenAddZoneDialog();
+          if (e.key === "c" || e.key === "C") onToolModeChange("connect");
+          if (e.key === "w" || e.key === "W") onToolModeChange("wall");
+          if (e.key === "k" || e.key === "K") onToolModeChange("walkway");
+        }
         if (e.key === "f" || e.key === "F") onToggleFullscreen();
       }
     };
@@ -453,35 +559,73 @@ function FactoryCanvasInner({
     return () => document.removeEventListener("keydown", onKey, true);
   }, [
     fitView, zoomIn, zoomOut, setRfNodes, doPaste, undo,
-    copySelected, duplicateSelected, deleteSelected, flipSelected,
+    copySelected, duplicateSelected, deleteSelected, rotateSelected,
     onToolModeChange, onAddZoneTypeChange, onOpenAddZoneDialog,
-    onWallOrientationToggle, onToggleFullscreen,
+    onToggleFullscreen, editMode,
   ]);
 
   const onConnect = useCallback(
     (connection: Connection) => {
       addFlowPath({ sourceId: connection.source!, targetId: connection.target!, pathType: "walkway" });
     },
-    [addFlowPath]
+    [addFlowPath],
   );
 
+  /* ── Drag stop — handles handle nodes, wall bodies, zone nodes separately ── */
   const onNodeDragStop = useCallback(
     (_e: unknown, _node: Node, draggedNodes: Node[]) => {
-      batchMoveNodes(
-        draggedNodes.map((n) => ({ id: n.id, position: n.position })),
-      );
+      const zoneMoves:      Array<{ id: string; position: { x: number; y: number } }> = [];
+      const wallBodyDeltas: Array<{ id: string; dx: number; dy: number }> = [];
+
+      draggedNodes.forEach((n) => {
+        if (n.id.startsWith("wh-s-") || n.id.startsWith("wh-e-")) {
+          /* Handle node drag → update single endpoint */
+          const isStart = n.id.startsWith("wh-s-");
+          const wallId  = n.id.slice(5);
+          const w = walls.find((x) => x.id === wallId);
+          if (!w) return;
+          const snap = (v: number) => Math.round(v / 20) * 20;
+          const newPt = { x: snap(n.position.x + 6), y: snap(n.position.y + 6) };
+          updateWall(wallId, isStart ? { start: newPt } : { end: newPt });
+        } else {
+          const w = walls.find((x) => x.id === n.id);
+          if (w) {
+            /* Wall body drag → translate both endpoints */
+            const { aabbW, aabbH, mid } = wallGeom(w);
+            const newMidX = n.position.x + aabbW / 2;
+            const newMidY = n.position.y + aabbH / 2;
+            const snap    = (v: number) => Math.round(v / 20) * 20;
+            const dx = snap(newMidX - mid.x);
+            const dy = snap(newMidY - mid.y);
+            if (dx !== 0 || dy !== 0) wallBodyDeltas.push({ id: w.id, dx, dy });
+          } else {
+            /* Zone node */
+            zoneMoves.push({
+              id:       n.id,
+              position: {
+                x: Math.round(n.position.x / 20) * 20,
+                y: Math.round(n.position.y / 20) * 20,
+              },
+            });
+          }
+        }
+      });
+
+      if (zoneMoves.length      > 0) batchMoveNodes(zoneMoves);
+      if (wallBodyDeltas.length > 0) batchMoveWalls(wallBodyDeltas);
     },
-    [batchMoveNodes]
+    [batchMoveNodes, batchMoveWalls, walls, updateWall],
   );
 
   const onNodeClick = useCallback(
     (_e: React.MouseEvent, node: Node) => { setSelectedNode(node.id); },
-    [setSelectedNode]
+    [setSelectedNode],
   );
 
   const onNodeContextMenu = useCallback(
     (e: React.MouseEvent, node: Node) => {
       e.preventDefault();
+      if (node.type === "wallHandle") return; // no context menu on handles
       const raw = screenToFlowPosition({ x: e.clientX, y: e.clientY });
       const alreadySelected = rfNodes.find((n) => n.id === node.id)?.selected ?? false;
       if (!alreadySelected) {
@@ -495,7 +639,7 @@ function FactoryCanvasInner({
         flowX: Math.round(raw.x / 20) * 20, flowY: Math.round(raw.y / 20) * 20,
       });
     },
-    [screenToFlowPosition, setSelectedNode, setRfNodes, rfNodes]
+    [screenToFlowPosition, setSelectedNode, setRfNodes, rfNodes],
   );
 
   const onPaneContextMenu = useCallback(
@@ -508,36 +652,33 @@ function FactoryCanvasInner({
         flowX: Math.round(raw.x / 20) * 20, flowY: Math.round(raw.y / 20) * 20,
       });
     },
-    [screenToFlowPosition]
+    [screenToFlowPosition],
   );
 
   const onPaneClick = useCallback(
     (event: React.MouseEvent) => {
-      if (toolMode === "add" && addZoneType) {
+      if (editMode && toolMode === "add" && addZoneType) {
         const raw = screenToFlowPosition({ x: event.clientX, y: event.clientY });
         const pos = { x: Math.round(raw.x / 20) * 20 - 90, y: Math.round(raw.y / 20) * 20 - 60 };
         addZone({ name: `New ${ZONE_LABELS[addZoneType]}`, type: addZoneType }, pos);
         onAddZoneTypeUsed();
-      } else if (toolMode === "wall" || toolMode === "walkway") {
-        const raw = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-        const gx  = Math.round(raw.x / 20) * 20;
-        const gy  = Math.round(raw.y / 20) * 20;
-        const cfg = WALL_CONFIG[toolMode as WallType];
-        const isH = wallOrientation === "horizontal";
+      } else if (editMode && (toolMode === "wall" || toolMode === "walkway")) {
+        const raw    = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+        const gx     = Math.round(raw.x / 20) * 20;
+        const gy     = Math.round(raw.y / 20) * 20;
+        const cfg    = WALL_CONFIG[toolMode as WallType];
+        const halfL  = cfg.defaultLength / 2;
         addWall({
-          wallType: toolMode as WallType, orientation: wallOrientation,
-          position: {
-            x: isH ? gx - cfg.defaultLength / 2 : gx - cfg.defaultThickness / 2,
-            y: isH ? gy - cfg.defaultThickness / 2 : gy - cfg.defaultLength / 2,
-          },
-          length: cfg.defaultLength, thickness: cfg.defaultThickness,
+          wallType:  toolMode as WallType,
+          start:     { x: gx - halfL, y: gy },
+          end:       { x: gx + halfL, y: gy },
+          thickness: cfg.defaultThickness,
         });
       } else {
         setSelectedNode(null);
       }
     },
-    [toolMode, addZoneType, addZone, onAddZoneTypeUsed, setSelectedNode,
-     screenToFlowPosition, wallOrientation, addWall]
+    [editMode, toolMode, addZoneType, addZone, onAddZoneTypeUsed, setSelectedNode, screenToFlowPosition, addWall],
   );
 
   const onMouseMove = useCallback(
@@ -545,17 +686,18 @@ function FactoryCanvasInner({
       const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY });
       onMousePosChange(Math.round(pos.x / 20), Math.round(pos.y / 20));
     },
-    [screenToFlowPosition, onMousePosChange]
+    [screenToFlowPosition, onMousePosChange],
   );
 
   const cursorStyle =
     toolMode === "add" || toolMode === "wall" || toolMode === "walkway" ? "crosshair" :
     toolMode === "connect" ? "cell" : "default";
 
+  /* ── Context menu rendering ── */
   const renderCtxMenu = () => {
     if (!ctxMenu) return null;
-    const close  = () => closeCtx();
-    const hasCb  = clipboardRef.current.length > 0;
+    const close    = () => closeCtx();
+    const hasCb    = clipboardRef.current.length > 0;
     const selCount = rfNodes.filter((n) => n.selected).length;
     const multi    = selCount > 1;
     const selBadge = multi
@@ -577,37 +719,36 @@ function FactoryCanvasInner({
           )}
           <div style={{ padding: "4px 0" }}>
             <CtxItem label={multi ? `Copy ${selCount}` : "Copy"}      shortcut="⌘C" t={t} onClick={() => { copySelected(); close(); }} />
-            <CtxItem label="Paste"                                     shortcut="⌘V" disabled={!hasCb} t={t} onClick={() => { if (!hasCb) return; pasteCountRef.current++; doPaste(pasteCountRef.current * 20); close(); }} />
-            <CtxItem label={multi ? `Duplicate ${selCount}` : "Duplicate"} shortcut="⌘D" t={t} onClick={() => { duplicateSelected(); close(); }} />
+            <CtxItem label="Paste"                                     shortcut="⌘V" disabled={!hasCb || !editMode} t={t} onClick={() => { if (!hasCb || !editMode) return; pasteCountRef.current++; doPaste(pasteCountRef.current * 20); close(); }} />
+            <CtxItem label={multi ? `Duplicate ${selCount}` : "Duplicate"} shortcut="⌘D" disabled={!editMode} t={t} onClick={() => { if (!editMode) return; duplicateSelected(); close(); }} />
             <CtxSep t={t} />
-            <CtxItem label={multi ? `Delete ${selCount}` : "Delete"} shortcut="⌫" destructive t={t} onClick={() => { deleteSelected(); close(); }} />
+            <CtxItem label={multi ? `Delete ${selCount}` : "Delete"} shortcut="⌫" destructive disabled={!editMode} t={t} onClick={() => { if (!editMode) return; deleteSelected(); close(); }} />
           </div>
         </>
       );
     }
 
     if (ctxMenu.kind === "wall") {
-      const wall = walls.find((w) => w.id === ctxMenu.nodeId);
-      const isWall = wall?.wallType === "wall";
-      const accentColor = isWall ? "#686868" : "#3A78B0";
+      const wall    = walls.find((w) => w.id === ctxMenu.nodeId);
+      const isWall  = wall?.wallType === "wall";
+      const acc     = isWall ? "#686868" : "#3A78B0";
       return (
         <>
           {wall && (
-            <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 12px 6px", borderBottom: `1px solid ${accentColor}33`, backgroundColor: isWall ? "rgba(104,104,104,0.08)" : "rgba(58,120,176,0.08)" }}>
-              {isWall ? <Minus size={12} color={accentColor} /> : <Footprints size={12} color={accentColor} />}
-              <span style={{ fontSize: 11, fontWeight: 700, color: accentColor }}>{WALL_CONFIG[wall.wallType].label}</span>
-              <span style={{ fontSize: 10, color: accentColor + "88", fontFamily: "monospace" }}>{wall.orientation === "horizontal" ? "↔" : "↕"}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 12px 6px", borderBottom: `1px solid ${acc}33`, backgroundColor: isWall ? "rgba(104,104,104,0.08)" : "rgba(58,120,176,0.08)" }}>
+              {isWall ? <Minus size={12} color={acc} /> : <Footprints size={12} color={acc} />}
+              <span style={{ fontSize: 11, fontWeight: 700, color: acc }}>{WALL_CONFIG[wall.wallType].label}</span>
               {selBadge}
             </div>
           )}
           <div style={{ padding: "4px 0" }}>
-            <CtxItem label={multi ? `Copy ${selCount}` : "Copy"}           shortcut="⌘C" t={t} onClick={() => { copySelected(); close(); }} />
-            <CtxItem label="Paste"                                          shortcut="⌘V" disabled={!hasCb} t={t} onClick={() => { if (!hasCb) return; pasteCountRef.current++; doPaste(pasteCountRef.current * 20); close(); }} />
+            <CtxItem label={multi ? `Copy ${selCount}` : "Copy"}      shortcut="⌘C" t={t} onClick={() => { copySelected(); close(); }} />
+            <CtxItem label="Paste"                                     shortcut="⌘V" disabled={!hasCb || !editMode} t={t} onClick={() => { if (!hasCb || !editMode) return; pasteCountRef.current++; doPaste(pasteCountRef.current * 20); close(); }} />
             <CtxSep t={t} />
-            <CtxItem label="Flip Orientation"                               shortcut="⌘F" t={t} onClick={() => { flipSelected(); close(); }} />
-            <CtxItem label={multi ? `Duplicate ${selCount}` : "Duplicate"} shortcut="⌘D" t={t} onClick={() => { duplicateSelected(); close(); }} />
+            <CtxItem label="Rotate 90°"                                shortcut="⌘F" disabled={!editMode} t={t} onClick={() => { if (!editMode) return; rotateSelected(); close(); }} />
+            <CtxItem label={multi ? `Duplicate ${selCount}` : "Duplicate"} shortcut="⌘D" disabled={!editMode} t={t} onClick={() => { if (!editMode) return; duplicateSelected(); close(); }} />
             <CtxSep t={t} />
-            <CtxItem label={multi ? `Delete ${selCount}` : "Delete"} shortcut="⌫" destructive t={t} onClick={() => { deleteSelected(); close(); }} />
+            <CtxItem label={multi ? `Delete ${selCount}` : "Delete"} shortcut="⌫" destructive disabled={!editMode} t={t} onClick={() => { if (!editMode) return; deleteSelected(); close(); }} />
           </div>
         </>
       );
@@ -615,43 +756,51 @@ function FactoryCanvasInner({
 
     return (
       <div style={{ padding: "4px 0" }}>
-        <CtxItem label="Paste" shortcut="⌘V" disabled={!hasCb} t={t} onClick={() => {
-          if (!hasCb) return; pasteCountRef.current++; doPaste(pasteCountRef.current * 20); close();
+        <CtxItem label="Paste" shortcut="⌘V" disabled={!hasCb || !editMode} t={t} onClick={() => {
+          if (!hasCb || !editMode) return; pasteCountRef.current++; doPaste(pasteCountRef.current * 20); close();
         }} />
         <CtxItem label="Select All" shortcut="⌘A" t={t} onClick={() => {
           setRfNodes((ns) => ns.map((n) => ({ ...n, selected: true }))); close();
         }} />
-        <CtxSep t={t} />
-        <CtxLabel t={t}>Place Zone</CtxLabel>
-        {ZONE_TYPE_LIST.map((type) => (
-          <CtxZoneItem key={type} type={type} t={t} onClick={() => {
-            addZone({ name: `New ${ZONE_LABELS[type]}`, type }, { x: ctxMenu.flowX - 90, y: ctxMenu.flowY - 60 });
-            close();
-          }} />
-        ))}
-        <CtxSep t={t} />
-        <CtxItem label="Add Wall here"    shortcut="W" t={t} onClick={() => {
-          const cfg = WALL_CONFIG["wall"];
-          addWall({ wallType: "wall", orientation: "horizontal", position: { x: ctxMenu.flowX - cfg.defaultLength / 2, y: ctxMenu.flowY - cfg.defaultThickness / 2 }, length: cfg.defaultLength, thickness: cfg.defaultThickness });
-          close();
-        }} />
-        <CtxItem label="Add Walkway here" shortcut="K" t={t} onClick={() => {
-          const cfg = WALL_CONFIG["walkway"];
-          addWall({ wallType: "walkway", orientation: "horizontal", position: { x: ctxMenu.flowX - cfg.defaultLength / 2, y: ctxMenu.flowY - cfg.defaultThickness / 2 }, length: cfg.defaultLength, thickness: cfg.defaultThickness });
-          close();
-        }} />
+        {editMode && (
+          <>
+            <CtxSep t={t} />
+            <CtxLabel t={t}>Place Zone</CtxLabel>
+            {ZONE_TYPE_LIST.map((type) => (
+              <CtxZoneItem key={type} type={type} t={t} onClick={() => {
+                addZone({ name: `New ${ZONE_LABELS[type]}`, type }, { x: ctxMenu.flowX - 90, y: ctxMenu.flowY - 60 });
+                close();
+              }} />
+            ))}
+            <CtxSep t={t} />
+            <CtxItem label="Add Wall here" shortcut="W" t={t} onClick={() => {
+              const cfg = WALL_CONFIG["wall"];
+              addWall({ wallType: "wall", start: { x: ctxMenu.flowX - cfg.defaultLength / 2, y: ctxMenu.flowY }, end: { x: ctxMenu.flowX + cfg.defaultLength / 2, y: ctxMenu.flowY }, thickness: cfg.defaultThickness });
+              close();
+            }} />
+            <CtxItem label="Add Walkway here" shortcut="K" t={t} onClick={() => {
+              const cfg = WALL_CONFIG["walkway"];
+              addWall({ wallType: "walkway", start: { x: ctxMenu.flowX - cfg.defaultLength / 2, y: ctxMenu.flowY }, end: { x: ctxMenu.flowX + cfg.defaultLength / 2, y: ctxMenu.flowY }, thickness: cfg.defaultThickness });
+              close();
+            }} />
+          </>
+        )}
         <CtxSep t={t} />
         <CtxItem label="Fit to Screen" shortcut="⌘⇧H" t={t} onClick={() => { fitView({ padding: 0.15, duration: 300 }); close(); }} />
-        <CtxSep t={t} />
-        <CtxItem label="Clear Floor" destructive t={t} onClick={() => { useFactoryStore.getState().clearFloor(); close(); }} />
+        {editMode && (
+          <>
+            <CtxSep t={t} />
+            <CtxItem label="Clear Floor" destructive t={t} onClick={() => { useFactoryStore.getState().clearFloor(); close(); }} />
+          </>
+        )}
       </div>
     );
   };
 
   const ctxStyle = (): React.CSSProperties => {
     if (!ctxMenu) return {};
-    const W = 220;
-    const left = ctxMenu.screenX + W > window.innerWidth  ? ctxMenu.screenX - W : ctxMenu.screenX;
+    const W    = 220;
+    const left = ctxMenu.screenX + W > window.innerWidth ? ctxMenu.screenX - W : ctxMenu.screenX;
     const top  = Math.min(ctxMenu.screenY, window.innerHeight - 60);
     return { position: "fixed", left, top, width: W, zIndex: 1000, maxHeight: "80vh", overflowY: "auto" };
   };
@@ -665,6 +814,8 @@ function FactoryCanvasInner({
         onNodeClick={onNodeClick} onPaneClick={onPaneClick}
         onNodeContextMenu={onNodeContextMenu} onPaneContextMenu={onPaneContextMenu}
         snapGrid={[20, 20]} snapToGrid fitView
+        nodesDraggable={editMode} nodesConnectable={editMode}
+        deleteKeyCode={[]}
         selectionMode={SelectionMode.Partial}
         autoPanOnNodeDrag autoPanOnConnect autoPanSpeed={20}
         minZoom={0} maxZoom={4}
@@ -682,9 +833,8 @@ function FactoryCanvasInner({
         <MiniMap
           style={{ backgroundColor: t.statusBg, border: `1px solid ${t.border}`, borderRadius: 8 }}
           nodeColor={(node) => {
-            if (node.type === "factoryWall") {
-              return (node.data as { wall: FactoryWall }).wall.wallType === "walkway" ? "#3A78B0" : "#484848";
-            }
+            if (node.type === "wallHandle")  return "#22C55E";
+            if (node.type === "factoryWall") return (node.data as { wall: FactoryWall }).wall.wallType === "walkway" ? "#3A78B0" : "#484848";
             const zone = (node.data as { zone: FactoryZone }).zone;
             return zone ? ZONE_COLORS[zone.type].border : t.border;
           }}
@@ -854,10 +1004,14 @@ function PropertiesPanel({ t }: { t: Theme }) {
   };
 
   if (selectedWall) {
-    const cfg = WALL_CONFIG[selectedWall.wallType];
+    const cfg    = WALL_CONFIG[selectedWall.wallType];
     const isWall = selectedWall.wallType === "wall";
-    const acc = isWall ? "#686868" : "#3A78B0";
-    const accBg = isWall ? "rgba(104,104,104,0.08)" : "rgba(58,120,176,0.08)";
+    const acc    = isWall ? "#686868" : "#3A78B0";
+    const accBg  = isWall ? "rgba(104,104,104,0.08)" : "rgba(58,120,176,0.08)";
+    const dx     = selectedWall.end.x - selectedWall.start.x;
+    const dy     = selectedWall.end.y - selectedWall.start.y;
+    const wallLen   = Math.sqrt(dx * dx + dy * dy);
+    const angleDeg  = Math.round(Math.atan2(dy, dx) * (180 / Math.PI));
     return (
       <div style={panelStyle}>
         <div style={{ ...hdr, borderBottom: `1px solid ${acc}44`, backgroundColor: accBg }}>
@@ -869,25 +1023,18 @@ function PropertiesPanel({ t }: { t: Theme }) {
         </div>
         <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 14, overflowY: "auto" }}>
           <div>
-            <label style={lbl}>Orientation</label>
-            <div style={{ display: "flex", gap: 6 }}>
-              {(["horizontal", "vertical"] as const).map((o) => (
-                <button key={o} onClick={() => updateWall(selectedWall.id, { orientation: o })}
-                  style={{ flex: 1, height: 30, backgroundColor: selectedWall.orientation === o ? acc : t.inputBg, border: `1px solid ${selectedWall.orientation === o ? acc : t.inputBorder}`, borderRadius: 6, color: selectedWall.orientation === o ? "#fff" : t.textMuted, fontSize: 11, fontWeight: 700, fontFamily: "monospace", cursor: "pointer", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                  {o === "horizontal" ? "↔ H" : "↕ V"}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
             <label style={lbl}>Thickness <span style={{ fontSize: 9, color: t.textDim, fontWeight: 400, marginLeft: 5 }}>{cfg.minThickness} – {cfg.maxThickness}</span></label>
             <ScrubInput value={selectedWall.thickness} min={cfg.minThickness} max={cfg.maxThickness} step={2} onChange={(v) => updateWall(selectedWall.id, { thickness: v })} unit="u" accent={acc} t={t} />
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <Stat label="L" value={`${Math.round(selectedWall.length / 20)}u`}    t={t} />
-            <Stat label="T" value={`${Math.round(selectedWall.thickness / 20)}u`} t={t} />
+          <div style={{ display: "flex", gap: 6 }}>
+            <Stat label="Length" value={`${Math.round(wallLen)}px`}  t={t} />
+            <Stat label="Angle"  value={`${angleDeg}°`}              t={t} />
+            <Stat label="T"      value={`${selectedWall.thickness}u`} t={t} />
           </div>
-          <p style={{ fontSize: 10, color: t.textDim, lineHeight: 1.6 }}>Drag end handles to resize length. Scrub or click to set thickness.</p>
+          <p style={{ fontSize: 10, color: t.textDim, lineHeight: 1.6 }}>
+            Drag green endpoint handles to reposition and rotate.<br />
+            Scrub or click thickness above.
+          </p>
           <button onClick={() => removeWall(selectedWall.id)} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px", height: 34, backgroundColor: "transparent", border: "1px solid #FF3B3030", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#FF3B30", marginTop: 4 }}>
             Remove {cfg.label}
           </button>
@@ -946,7 +1093,7 @@ function PropertiesPanel({ t }: { t: Theme }) {
           <label style={lbl}>Type</label>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
             {ZONE_TYPE_LIST.map((type) => {
-              const c = ZONE_COLORS[type];
+              const c      = ZONE_COLORS[type];
               const active = type === selectedZone.type;
               return (
                 <button key={type} onClick={() => updateZone(selectedZone.id, { type })}
@@ -963,7 +1110,7 @@ function PropertiesPanel({ t }: { t: Theme }) {
           <input style={inp} type="number" min="0" placeholder="Workers / machines" value={selectedZone.capacity ?? ""} onChange={(e) => updateZone(selectedZone.id, { capacity: parseInt(e.target.value) || undefined })} />
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <Stat label="W" value={`${Math.round(selectedNode.width / 20)}u`}  t={t} />
+          <Stat label="W" value={`${Math.round(selectedNode.width  / 20)}u`} t={t} />
           <Stat label="H" value={`${Math.round(selectedNode.height / 20)}u`} t={t} />
         </div>
         <div>
@@ -982,7 +1129,91 @@ function Stat({ label, value, t }: { label: string; value: string; t: Theme }) {
   return (
     <div style={{ flex: 1, padding: "6px 10px", backgroundColor: t.inputBg, border: `1px solid ${t.borderFaint}`, borderRadius: 6, textAlign: "center" }}>
       <div style={{ fontSize: 10, color: t.textDim, fontFamily: "monospace" }}>{label}</div>
-      <div style={{ fontSize: 14, fontWeight: 700, color: t.textPrimary, fontFamily: "monospace" }}>{value}</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: t.textPrimary, fontFamily: "monospace" }}>{value}</div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════
+   Plans Overlay Panel
+══════════════════════════════════════════════════ */
+function PlansOverlayPanel({ t, onClose }: { t: Theme; onClose: () => void }) {
+  const { plans } = usePlanOverlayStore();
+  const { planAttachments, removeAttachment } = useFactoryStore();
+
+  return (
+    <div style={{
+      width: 240, minWidth: 240, height: "100%",
+      backgroundColor: t.panelBg, borderLeft: `1px solid ${t.border}`,
+      display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 16px", borderBottom: `1px solid ${t.border}`, flexShrink: 0 }}>
+        <GitBranch size={13} color="#22C55E" />
+        <span style={{ fontSize: 12, fontWeight: 700, color: t.textPrimary }}>Plans Overlay</span>
+        <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", display: "flex", padding: 4 }}>
+          <X size={13} color={t.textMuted} />
+        </button>
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px" }}>
+        <p style={{ fontSize: 10, color: t.textDim, marginBottom: 12, lineHeight: 1.5 }}>
+          Drag workflows onto zones to attach. Sequence edges appear automatically when both ends are attached.
+        </p>
+        {plans.map((plan) => (
+          <div key={plan.id} style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, marginBottom: 6, paddingBottom: 4, borderBottom: `1px solid ${t.borderFaint}` }}>
+              {plan.name}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              {plan.workflows.map((wf) => {
+                const isAttached = planAttachments.some(
+                  (a) => a.workflowId === wf.id && a.planId === plan.id,
+                );
+                return (
+                  <div
+                    key={wf.id}
+                    draggable={!isAttached}
+                    onDragStart={isAttached ? undefined : (e) => {
+                      e.dataTransfer.setData("application/overlay-wf", JSON.stringify({
+                        planId:       plan.id,
+                        workflowId:   wf.id,
+                        workflowName: wf.name,
+                        durationH:    wf.durationH,
+                        color:        wf.color,
+                      }));
+                      e.dataTransfer.effectAllowed = "copy";
+                    }}
+                    style={{
+                      display:         "flex",
+                      alignItems:      "center",
+                      gap:             7,
+                      padding:         "6px 8px",
+                      borderRadius:    6,
+                      backgroundColor: wf.color + "15",
+                      border:          `1px solid ${wf.color}${isAttached ? "44" : "66"}`,
+                      cursor:          isAttached ? "default" : "grab",
+                      opacity:         isAttached ? 0.55 : 1,
+                      transition:      "opacity 0.15s",
+                    }}
+                  >
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: wf.color, flexShrink: 0 }} />
+                    <span style={{ fontSize: 11, fontWeight: 600, color: t.textPrimary, flex: 1 }}>{wf.name}</span>
+                    <span style={{ fontSize: 10, color: t.textDim, fontFamily: "monospace" }}>{wf.durationH}h</span>
+                    {isAttached && (
+                      <button
+                        onClick={() => removeAttachment(wf.id, plan.id)}
+                        title="Remove attachment"
+                        style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", opacity: 0.7 }}
+                      >
+                        <X size={10} color={t.textDim} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -991,39 +1222,26 @@ function Stat({ label, value, t }: { label: string; value: string; t: Theme }) {
    Toolbar
 ══════════════════════════════════════════════════ */
 function Toolbar({
-  toolMode, setToolMode, wallOrientation, onToggleOrientation,
-  onAddZone, onClearFloor, onUndo, canUndo, t,
+  toolMode, setToolMode,
+  onAddZone, onClearFloor, onUndo, canUndo, editMode, t,
 }: {
   toolMode: ToolMode; setToolMode: (m: ToolMode) => void;
-  wallOrientation: Orientation; onToggleOrientation: (o: Orientation) => void;
   onAddZone: () => void; onClearFloor: () => void;
-  onUndo: () => void; canUndo: boolean; t: Theme;
+  onUndo: () => void; canUndo: boolean; editMode: boolean; t: Theme;
 }) {
-  const isWallMode = toolMode === "wall" || toolMode === "walkway";
   return (
     <div style={{ width: 52, minWidth: 52, height: "100%", backgroundColor: t.panelBg, borderRight: `1px solid ${t.border}`, display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 10, gap: 4, flexShrink: 0 }}>
-      <ToolBtn active={toolMode === "select"}  onClick={() => setToolMode("select")}  title="Select (V)" t={t}><MousePointer2 size={17} strokeWidth={1.8} /></ToolBtn>
-      <ToolBtn active={toolMode === "connect"} onClick={() => setToolMode("connect")} title="Connect (C)" t={t}><Spline size={17} strokeWidth={1.8} /></ToolBtn>
+      <ToolBtn active={toolMode === "select"}  onClick={() => setToolMode("select")}               title="Select (V)"   t={t}><MousePointer2 size={17} strokeWidth={1.8} /></ToolBtn>
+      <ToolBtn active={toolMode === "connect"} onClick={() => editMode && setToolMode("connect")}  title="Connect (C)"  disabled={!editMode} t={t}><Spline size={17} strokeWidth={1.8} /></ToolBtn>
       <div style={{ width: 28, height: 1, backgroundColor: t.border, margin: "4px 0" }} />
-      <ToolBtn onClick={onAddZone} title="Add Zone (S)" active={toolMode === "add"} t={t}><Square size={17} strokeWidth={1.8} /></ToolBtn>
+      <ToolBtn onClick={() => editMode && onAddZone()} title="Add Zone (S)" active={toolMode === "add"} disabled={!editMode} t={t}><Square size={17} strokeWidth={1.8} /></ToolBtn>
       <div style={{ width: 28, height: 1, backgroundColor: t.border, margin: "4px 0" }} />
-      <ToolBtn active={toolMode === "wall"}    onClick={() => setToolMode("wall")}    title="Wall (W)"    t={t}><Minus size={17} strokeWidth={2.5} /></ToolBtn>
-      <ToolBtn active={toolMode === "walkway"} onClick={() => setToolMode("walkway")} title="Walkway (K)" t={t}><Footprints size={15} strokeWidth={1.8} /></ToolBtn>
-      {isWallMode && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 2 }}>
-          {(["horizontal", "vertical"] as const).map((o) => (
-            <button key={o} onClick={() => onToggleOrientation(o)}
-              title={o === "horizontal" ? "Horizontal" : "Vertical"}
-              style={{ width: 28, height: 18, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: wallOrientation === o ? "#F56300" : "transparent", border: `1px solid ${wallOrientation === o ? "#F56300" : t.border}`, borderRadius: 4, color: wallOrientation === o ? "#fff" : t.textDim, fontSize: 8, fontWeight: 800, fontFamily: "monospace", cursor: "pointer" }}>
-              {o === "horizontal" ? "H" : "V"}
-            </button>
-          ))}
-        </div>
-      )}
+      <ToolBtn active={toolMode === "wall"}    onClick={() => editMode && setToolMode("wall")}    title="Wall (W)"     disabled={!editMode} t={t}><Minus size={17} strokeWidth={2.5} /></ToolBtn>
+      <ToolBtn active={toolMode === "walkway"} onClick={() => editMode && setToolMode("walkway")} title="Walkway (K)"  disabled={!editMode} t={t}><Footprints size={15} strokeWidth={1.8} /></ToolBtn>
       <div style={{ width: 28, height: 1, backgroundColor: t.border, margin: "4px 0" }} />
       <ToolBtn onClick={onUndo} title="Undo (⌘Z)" disabled={!canUndo} t={t}><Undo2 size={15} strokeWidth={1.8} /></ToolBtn>
       <div style={{ width: 28, height: 1, backgroundColor: t.border, margin: "4px 0", marginTop: "auto" }} />
-      <ToolBtn onClick={onClearFloor} title="Clear Floor" style={{ marginBottom: 8 }} t={t}><RotateCcw size={15} strokeWidth={1.8} /></ToolBtn>
+      <ToolBtn onClick={editMode ? onClearFloor : undefined} title="Clear Floor" disabled={!editMode} style={{ marginBottom: 8 }} t={t}><RotateCcw size={15} strokeWidth={1.8} /></ToolBtn>
     </div>
   );
 }
@@ -1048,20 +1266,19 @@ function ShortcutsDropdown({ t }: { t: Theme }) {
   type Row = { desc: string; keys: string[] };
   const groups: { title: string; rows: Row[] }[] = [
     { title: "Tools", rows: [
-      { desc: "Select",      keys: ["V"] },   { desc: "Add Zone",    keys: ["S"] },
-      { desc: "Connect",     keys: ["C"] },   { desc: "Wall",        keys: ["W"] },
-      { desc: "Walkway",     keys: ["K"] },   { desc: "Toggle H/V",  keys: ["O"] },
-      { desc: "Cancel",      keys: ["Esc"] },
+      { desc: "Select",       keys: ["V"] },   { desc: "Add Zone",    keys: ["S"] },
+      { desc: "Connect",      keys: ["C"] },   { desc: "Wall",        keys: ["W"] },
+      { desc: "Walkway",      keys: ["K"] },   { desc: "Cancel",      keys: ["Esc"] },
     ]},
     { title: "Edit", rows: [
-      { desc: "Undo",        keys: ["⌘", "Z"] }, { desc: "Copy",      keys: ["⌘", "C"] },
-      { desc: "Paste",       keys: ["⌘", "V"] }, { desc: "Duplicate", keys: ["⌘", "D"] },
-      { desc: "Select All",  keys: ["⌘", "A"] }, { desc: "Delete",    keys: ["⌫"] },
-      { desc: "Flip H/V",    keys: ["⌘", "F"] },
+      { desc: "Undo",         keys: ["⌘", "Z"] }, { desc: "Copy",      keys: ["⌘", "C"] },
+      { desc: "Paste",        keys: ["⌘", "V"] }, { desc: "Duplicate", keys: ["⌘", "D"] },
+      { desc: "Select All",   keys: ["⌘", "A"] }, { desc: "Delete",    keys: ["⌫"] },
+      { desc: "Rotate 90°",   keys: ["⌘", "F"] },
     ]},
     { title: "View", rows: [
-      { desc: "Fullscreen",  keys: ["F"] },
-      { desc: "Zoom In",     keys: ["⌘", "+"] }, { desc: "Zoom Out",  keys: ["⌘", "−"] },
+      { desc: "Fullscreen",   keys: ["F"] },
+      { desc: "Zoom In",      keys: ["⌘", "+"] }, { desc: "Zoom Out",  keys: ["⌘", "−"] },
       { desc: "Fit to Screen", keys: ["⌘", "⇧", "H"] },
     ]},
   ];
@@ -1105,21 +1322,34 @@ function ShortcutsDropdown({ t }: { t: Theme }) {
 
 /* ══════════════════════════════════════════════════
    Main exported component
-   embedded=false → standalone page (negative margins)
-   embedded=true  → fills parent container (no margins)
 ══════════════════════════════════════════════════ */
-export function FactoryFloorBuilder({ embedded = false }: { embedded?: boolean }) {
+export function FactoryFloorBuilder({
+  embedded = false,
+  onSave,
+  layoutName,
+  onBack,
+}: {
+  embedded?: boolean;
+  onSave?: (snap: FactorySnapshot) => void;
+  layoutName?: string;
+  onBack?: () => void;
+}) {
   const isDark = useDarkMode();
   const t = isDark ? FACTORY_DARK : FACTORY_LIGHT;
 
-  const [toolMode,        setToolMode]        = useState<ToolMode>("select");
-  const [addZoneType,     setAddZoneType]     = useState<ZoneType | null>(null);
-  const [wallOrientation, setWallOrientation] = useState<Orientation>("horizontal");
-  const [showDialog,      setShowDialog]      = useState(false);
-  const [mousePos,        setMousePos]        = useState({ x: 0, y: 0 });
-  const [isFullscreen,    setIsFullscreen]    = useState(false);
-  const [showShortcuts,   setShowShortcuts]   = useState(false);
+  const [toolMode,      setToolMode]      = useState<ToolMode>("select");
+  const [addZoneType,   setAddZoneType]   = useState<ZoneType | null>(null);
+  const [showDialog,    setShowDialog]    = useState(false);
+  const [mousePos,      setMousePos]      = useState({ x: 0, y: 0 });
+  const [isFullscreen,  setIsFullscreen]  = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [editMode,      setEditMode]      = useState(false);
+  const [showPlans,     setShowPlans]     = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!editMode) { setToolMode("select"); setAddZoneType(null); }
+  }, [editMode]);
 
   const { zones, nodes, walls, clearFloor, undo, canUndo } = useFactoryStore();
 
@@ -1158,10 +1388,20 @@ export function FactoryFloorBuilder({ embedded = false }: { embedded?: boolean }
     <div ref={containerRef} style={outerStyle}>
 
       {/* ── Header ── */}
-      <div style={{ height: 44, display: "flex", alignItems: "center", padding: "0 16px", backgroundColor: t.headerBg, borderBottom: `1px solid ${t.border}`, flexShrink: 0, gap: 16 }}>
+      <div style={{ height: 44, display: "flex", alignItems: "center", padding: "0 16px", backgroundColor: t.headerBg, borderBottom: `1px solid ${t.border}`, flexShrink: 0, gap: 10 }}>
+        {onBack && (
+          <>
+            <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", cursor: "pointer", color: t.textMuted, fontSize: 13, padding: "0 4px", flexShrink: 0 }}>
+              <ArrowLeft size={14} /> Layouts
+            </button>
+            <span style={{ color: t.border }}>›</span>
+          </>
+        )}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Building2 size={16} color="#F56300" />
-          <span style={{ fontSize: 14, fontWeight: 700, color: t.textPrimary, letterSpacing: "-0.01em" }}>Factory Floor Builder</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: t.textPrimary, letterSpacing: "-0.01em" }}>
+            {layoutName ?? "Factory Floor Builder"}
+          </span>
         </div>
         <div style={{ width: 1, height: 20, backgroundColor: t.border }} />
         <span style={{ fontSize: 11, color: t.textMuted, fontFamily: "monospace" }}>
@@ -1179,19 +1419,49 @@ export function FactoryFloorBuilder({ embedded = false }: { embedded?: boolean }
         {isWallMode && (
           <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", backgroundColor: toolMode === "wall" ? "rgba(104,104,104,0.1)" : "rgba(58,120,176,0.1)", border: `1px solid ${toolMode === "wall" ? "rgba(104,104,104,0.4)" : "rgba(58,120,176,0.4)"}`, borderRadius: 999, fontSize: 11, color: toolMode === "wall" ? "#888" : "#4A90C8", fontWeight: 600 }}>
             {toolMode === "wall" ? <Minus size={10} /> : <Footprints size={10} />}
-            Placing {toolMode === "wall" ? "Wall" : "Walkway"} —
-            <button onClick={() => setWallOrientation((o) => o === "horizontal" ? "vertical" : "horizontal")} style={{ background: "none", border: "none", cursor: "pointer", color: toolMode === "wall" ? "#888" : "#4A90C8", fontSize: 10, fontFamily: "monospace", fontWeight: 800, padding: "0 2px" }}>
-              {wallOrientation === "horizontal" ? "↔ H" : "↕ V"}
-            </button>
-            · click canvas
+            Placing {toolMode === "wall" ? "Wall" : "Walkway"} — click canvas
             <button onClick={() => setToolMode("select")} style={{ background: "none", border: "none", cursor: "pointer", color: "inherit", display: "flex", padding: 0, marginLeft: 2 }}><X size={12} /></button>
           </div>
         )}
 
         <div style={{ flex: 1 }} />
-        <button onClick={() => setShowDialog(true)} style={hBtnOrange}><Plus size={13} /> Add Zone</button>
-        <button style={hBtnGhost}><Save size={13} /> Save Layout</button>
-        <button onClick={toggleFullscreen} title={isFullscreen ? "Exit Fullscreen (F)" : "Fullscreen (F)"} style={hBtnGhost}>{isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}</button>
+
+        {editMode && <button onClick={() => setShowDialog(true)} style={hBtnOrange}><Plus size={13} /> Add Zone</button>}
+
+        {/* Plans overlay toggle */}
+        <button
+          onClick={() => setShowPlans((s) => !s)}
+          title="Plans Overlay"
+          style={{ ...hBtnGhost, backgroundColor: showPlans ? "rgba(34,197,94,0.12)" : t.btnGhostBg, borderColor: showPlans ? "#22C55E66" : t.border, color: showPlans ? "#22C55E" : t.textMuted }}
+        >
+          <GitBranch size={13} /> Plans
+        </button>
+
+        {/* Edit / View lock */}
+        <button
+          onClick={() => setEditMode(m => !m)}
+          title={editMode ? "Lock (view mode)" : "Unlock (edit mode)"}
+          style={{ ...hBtnGhost, backgroundColor: editMode ? "rgba(245,99,0,0.12)" : t.btnGhostBg, borderColor: editMode ? "#F5630066" : t.border, color: editMode ? "#F56300" : t.textMuted }}
+        >
+          {editMode ? <PenLine size={13} /> : <Lock size={13} />}
+          {editMode ? "Editing" : "View"}
+        </button>
+
+        {onSave && (
+          <button
+            onClick={() => {
+              const s = useFactoryStore.getState();
+              onSave({ zones: s.zones, nodes: s.nodes, edges: s.edges, walls: s.walls, planAttachments: s.planAttachments });
+            }}
+            style={hBtnGhost}
+          >
+            <Save size={13} /> Save Layout
+          </button>
+        )}
+
+        <button onClick={toggleFullscreen} title={isFullscreen ? "Exit Fullscreen (F)" : "Fullscreen (F)"} style={hBtnGhost}>
+          {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+        </button>
 
         {showShortcuts && <div style={{ position: "fixed", inset: 0, zIndex: 499 }} onClick={() => setShowShortcuts(false)} />}
         <div style={{ position: "relative" }}>
@@ -1206,28 +1476,29 @@ export function FactoryFloorBuilder({ embedded = false }: { embedded?: boolean }
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
         <Toolbar
           toolMode={toolMode} setToolMode={setToolMode}
-          wallOrientation={wallOrientation} onToggleOrientation={setWallOrientation}
           onAddZone={() => setShowDialog(true)}
-          onClearFloor={clearFloor} onUndo={undo} canUndo={canUndo} t={t}
+          onClearFloor={clearFloor} onUndo={undo} canUndo={canUndo} editMode={editMode} t={t}
         />
         <div style={{ flex: 1, overflow: "hidden" }}>
           <ReactFlowProvider>
             <FactoryCanvasInner
               toolMode={toolMode} addZoneType={addZoneType}
               onAddZoneTypeUsed={() => { setToolMode("select"); setAddZoneType(null); }}
-              wallOrientation={wallOrientation}
               onOpenAddZoneDialog={() => setShowDialog(true)}
               onMousePosChange={(x, y) => setMousePos({ x, y })}
               onToolModeChange={setToolMode}
               onAddZoneTypeChange={setAddZoneType}
-              onWallOrientationToggle={() => setWallOrientation((o) => o === "horizontal" ? "vertical" : "horizontal")}
               onToggleFullscreen={toggleFullscreen}
               undo={undo}
+              editMode={editMode}
               t={t}
             />
           </ReactFlowProvider>
         </div>
-        <PropertiesPanel t={t} />
+        {showPlans
+          ? <PlansOverlayPanel t={t} onClose={() => setShowPlans(false)} />
+          : <PropertiesPanel t={t} />
+        }
       </div>
 
       {/* ── Status bar ── */}
@@ -1239,7 +1510,7 @@ export function FactoryFloorBuilder({ embedded = false }: { embedded?: boolean }
         <StatusItem label="SNAP"  value="ON"       t={t} />
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 9, color: t.textDim, fontFamily: "monospace" }}>
-          V — select · S — zone · W — wall · K — walkway · O — H/V · C — connect · F — fullscreen · ⌘Z — undo · right-click for actions
+          V — select · S — zone · W — wall · K — walkway · C — connect · F — fullscreen · ⌘Z — undo · right-click for actions
         </span>
       </div>
 

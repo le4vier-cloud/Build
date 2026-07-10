@@ -1,71 +1,158 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Users, ShoppingBag, Scissors,
-  Warehouse, ArrowUpCircle, Link2, Archive,
-  Workflow, UserCircle, CalendarDays,
-  Home, Settings, LogOut, User, Building2,
+  Box, Wrench, Users, Truck,
+  GitBranch, CircleUser, FileText,
+  SlidersHorizontal, LogOut, UserRound,
 } from "lucide-react";
 
 const NAV_ITEMS = [
-  { href: "/processes",  icon: Workflow,       label: "Processes" },
-  { href: "/staff",      icon: Users,          label: "Staff" },
-  { href: "/products",   icon: ShoppingBag,    label: "Products" },
-  { href: "/tools",      icon: Scissors,       label: "Tools" },
-  { href: "/suppliers",  icon: Warehouse,      label: "Suppliers" },
-  { href: "/inventory",  icon: Archive,        label: "Parts" },
-  { href: "/clients",    icon: UserCircle,     label: "Clients" },
-  { href: "/orders",     icon: CalendarDays,   label: "Orders" },
+  { href: "/inventory",  icon: Box,               label: "Parts" },
+  { href: "/tools",      icon: Wrench,            label: "Tools" },
+  { href: "/staff",      icon: Users,             label: "Staff" },
+  { href: "/suppliers",  icon: Truck,             label: "Suppliers" },
+  { href: "/processes",  icon: GitBranch,         label: "Processes" },
+  { href: "/clients",    icon: CircleUser,        label: "Clients" },
+  { href: "/orders",     icon: FileText,          label: "Orders" },
 ];
+
+const BOTTOM_ITEMS = [
+  { href: "/settings", icon: SlidersHorizontal, label: "Settings" },
+  { href: "/profile",  icon: UserRound,          label: "Profile" },
+];
+
+interface Tooltip { label: string; y: number }
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [tooltip, setTooltip] = useState<Tooltip | null>(null);
 
   const isActive = (href: string) => pathname.startsWith(href);
 
-  return (
-    <aside style={styles.sidebar}>
-      <nav style={styles.nav}>
-        {NAV_ITEMS.map(({ href, icon: Icon, label }) => {
-          const active = isActive(href);
-          return (
-            <Link key={href} href={href} style={styles.link}>
-              <span style={{ ...styles.iconWrap, ...(active ? styles.iconWrapActive : {}) }}>
-                <Icon size={20} color={active ? "#fff" : "var(--sidebar-icon)"} strokeWidth={1.8} />
-              </span>
-              <span style={{ ...styles.label, ...(active ? styles.labelActive : {}) }}>
-                {label}
-              </span>
-            </Link>
-          );
-        })}
-      </nav>
+  function show(e: React.MouseEvent, label: string) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setTooltip({ label, y: r.top + r.height / 2 });
+  }
 
-      <div style={styles.bottom}>
-        <div style={styles.bottomRow}>
-          <Link href="/home" style={styles.bottomIcon}>
-            <Home size={18} color="var(--sidebar-icon)" strokeWidth={1.8} />
-          </Link>
-          <Link href="/settings" style={styles.bottomIcon}>
-            <Settings size={18} color="var(--sidebar-icon)" strokeWidth={1.8} />
-          </Link>
-        </div>
-        <div style={styles.bottomRow}>
-          <button style={styles.bottomIcon}>
-            <LogOut size={18} color="var(--sidebar-icon)" strokeWidth={1.8} />
+  return (
+    <>
+      <style>{`
+        .sb-link {
+          display: flex; flex-direction: column; align-items: center;
+          gap: 4px; padding: 6px 4px; border-radius: 12px;
+          text-decoration: none; cursor: pointer;
+        }
+        .sb-icon {
+          width: 38px; height: 38px; border-radius: 50%;
+          display: flex; align-items: center; justify-content: center;
+          transition: background-color 0.12s ease, transform 0.12s ease;
+        }
+        .sb-link:hover .sb-icon { transform: scale(1.14); }
+        .sb-link:active .sb-icon { transform: scale(0.88); transition-duration: 0.06s; }
+
+        .sb-btn {
+          display: flex; align-items: center; justify-content: center;
+          width: 34px; height: 34px; border-radius: 8px;
+          border: none; background: none; cursor: pointer; text-decoration: none;
+          transition: transform 0.12s ease, background-color 0.12s ease;
+          color: inherit;
+        }
+        .sb-btn:hover { transform: scale(1.18); background-color: var(--bg); }
+        .sb-btn:active { transform: scale(0.88); transition-duration: 0.06s; }
+      `}</style>
+
+      <aside style={s.sidebar}>
+        {/* Main nav */}
+        <nav style={s.nav}>
+          {NAV_ITEMS.map(({ href, icon: Icon, label }) => {
+            const active = isActive(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                className="sb-link"
+                onMouseEnter={e => show(e, label)}
+                onMouseLeave={() => setTooltip(null)}
+              >
+                <span
+                  className="sb-icon"
+                  style={{ backgroundColor: active ? "var(--sidebar-active)" : "transparent" }}
+                >
+                  <Icon
+                    size={18}
+                    color={active ? "#fff" : "var(--sidebar-icon)"}
+                    strokeWidth={1.5}
+                  />
+                </span>
+                <span style={{
+                  fontSize: 10,
+                  fontWeight: active ? 600 : 500,
+                  color: active ? "var(--text-primary)" : "var(--sidebar-icon)",
+                  textAlign: "center",
+                  lineHeight: 1.2,
+                  letterSpacing: "0.01em",
+                }}>
+                  {label}
+                </span>
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* Bottom */}
+        <div style={s.bottom}>
+          <button
+            className="sb-btn"
+            onMouseEnter={e => show(e, "Sign Out")}
+            onMouseLeave={() => setTooltip(null)}
+          >
+            <LogOut size={16} color="var(--sidebar-icon)" strokeWidth={1.5} />
           </button>
-          <Link href="/profile" style={styles.bottomIcon}>
-            <User size={18} color="var(--sidebar-icon)" strokeWidth={1.8} />
-          </Link>
+
+          {BOTTOM_ITEMS.map(({ href, icon: Icon, label }) => (
+            <Link
+              key={href}
+              href={href}
+              className="sb-btn"
+              onMouseEnter={e => show(e, label)}
+              onMouseLeave={() => setTooltip(null)}
+            >
+              <Icon size={16} color="var(--sidebar-icon)" strokeWidth={1.5} />
+            </Link>
+          ))}
         </div>
-      </div>
-    </aside>
+      </aside>
+
+      {/* Tooltip */}
+      {tooltip && (
+        <div style={{
+          position: "fixed",
+          left: 80,
+          top: tooltip.y,
+          transform: "translateY(-50%)",
+          backgroundColor: "var(--text-primary)",
+          color: "var(--bg)",
+          fontSize: 12,
+          fontWeight: 600,
+          padding: "5px 10px",
+          borderRadius: 7,
+          pointerEvents: "none",
+          zIndex: 9999,
+          whiteSpace: "nowrap",
+          letterSpacing: "0.01em",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+        }}>
+          {tooltip.label}
+        </div>
+      )}
+    </>
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
+const s: Record<string, React.CSSProperties> = {
   sidebar: {
     width: 72,
     minWidth: 72,
@@ -79,68 +166,20 @@ const styles: Record<string, React.CSSProperties> = {
     paddingBottom: 16,
     overflowY: "auto",
     flexShrink: 0,
+    alignItems: "center",
   },
   nav: {
     display: "flex",
     flexDirection: "column",
     gap: 2,
     paddingInline: 8,
-  },
-  link: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: 4,
-    padding: "8px 4px",
-    borderRadius: "var(--radius-md)",
-    textDecoration: "none",
-    cursor: "pointer",
-  },
-  iconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: "var(--radius-full, 9999px)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    transition: "background-color 0.15s ease",
-  },
-  iconWrapActive: {
-    backgroundColor: "var(--sidebar-active)",
-  },
-  label: {
-    fontSize: 10,
-    fontWeight: 500,
-    color: "var(--sidebar-icon)",
-    textAlign: "center",
-    lineHeight: 1.2,
-    letterSpacing: "0.01em",
-  },
-  labelActive: {
-    color: "var(--text-primary)",
-    fontWeight: 600,
+    width: "100%",
   },
   bottom: {
     display: "flex",
     flexDirection: "column",
-    gap: 4,
-    paddingInline: 8,
-  },
-  bottomRow: {
-    display: "flex",
-    justifyContent: "center",
-    gap: 4,
-  },
-  bottomIcon: {
-    width: 32,
-    height: 32,
-    display: "flex",
     alignItems: "center",
-    justifyContent: "center",
-    borderRadius: "var(--radius-sm)",
-    cursor: "pointer",
-    background: "none",
-    border: "none",
-    textDecoration: "none",
+    gap: 6,
+    paddingInline: 8,
   },
 };

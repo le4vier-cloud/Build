@@ -1,10 +1,10 @@
 "use client";
 
-import { use, useEffect, useRef, useState } from "react";
+import React, { use, useEffect, useRef, useState } from "react";
 import { useManufacturingStore } from "@/stores/useManufacturingStore";
 import {
   ArrowLeft, Plus, X, Clock, Cpu, User2, Users,
-  Workflow, BarChart3, Pencil,
+  Workflow, Pencil, GitBranch,
   ChevronDown, ChevronRight, GripVertical,
   FileText, Upload, Search, Package,
 } from "lucide-react";
@@ -101,7 +101,16 @@ type PanelState =
   | { mode: "edit-workflow"; wfId: string; name: string }
   | { mode: "new-task"; targetWfId: string }
   | { mode: "edit-task"; taskId: string; name: string; maxDuration: string; optionSet: "human" | "machine"; meta: TaskMeta }
+  | { mode: "new-task-option"; taskId: string; parentPath: string[] }
+  | { mode: "edit-task-option"; taskId: string; parentPath: string[]; optId: string; name: string; maxDuration: string; optionSet: "human" | "machine"; meta: TaskMeta }
+  | { mode: "new-workflow-option"; wfId: string; parentPath: string[] }
+  | { mode: "edit-workflow-option"; wfId: string; parentPath: string[]; optId: string; name: string }
+  | { mode: "new-task-in-wf-option"; wfId: string; optPath: string[] }
+  | { mode: "edit-task-in-wf-option"; wfId: string; optPath: string[]; taskId: string; name: string; maxDuration: string; optionSet: "human" | "machine"; meta: TaskMeta }
   | null;
+
+interface LocalTask { id: string; name: string; duration: number; optionSet: "human" | "machine"; meta: TaskMeta; options: LocalTask[] }
+interface WfOption  { id: string; name: string; tasks: LocalTask[]; options: WfOption[] }
 
 interface SaveData { name: string; maxDuration?: number; optionSet?: "human" | "machine"; meta?: TaskMeta; }
 
@@ -111,6 +120,58 @@ const fmtMin = (min: number) => {
 };
 function reorder<T>(arr: T[], from: number, to: number): T[] {
   const r = [...arr]; const [item] = r.splice(from, 1); r.splice(to, 0, item); return r;
+}
+
+/* ── Recursive tree helpers ─────────────────────────────────────── */
+function getTaskOptsAt(opts: LocalTask[], path: string[]): LocalTask[] {
+  if (path.length === 0) return opts;
+  const n = opts.find(o => o.id === path[0]); if (!n) return [];
+  return getTaskOptsAt(n.options, path.slice(1));
+}
+function addTaskOpt(opts: LocalTask[], path: string[], item: LocalTask): LocalTask[] {
+  if (path.length === 0) return [...opts, item];
+  return opts.map(o => o.id !== path[0] ? o : { ...o, options: addTaskOpt(o.options, path.slice(1), item) });
+}
+function updateTaskOptById(opts: LocalTask[], path: string[], id: string, fn: (t: LocalTask) => LocalTask): LocalTask[] {
+  if (path.length === 0) return opts.map(o => o.id === id ? fn(o) : o);
+  return opts.map(o => o.id !== path[0] ? o : { ...o, options: updateTaskOptById(o.options, path.slice(1), id, fn) });
+}
+function removeTaskOptById(opts: LocalTask[], path: string[], id: string): LocalTask[] {
+  if (path.length === 0) return opts.filter(o => o.id !== id);
+  return opts.map(o => o.id !== path[0] ? o : { ...o, options: removeTaskOptById(o.options, path.slice(1), id) });
+}
+function reorderTaskOptsAt(opts: LocalTask[], path: string[], from: number, to: number): LocalTask[] {
+  if (path.length === 0) return reorder(opts, from, to);
+  return opts.map(o => o.id !== path[0] ? o : { ...o, options: reorderTaskOptsAt(o.options, path.slice(1), from, to) });
+}
+function getWfOptsAt(opts: WfOption[], path: string[]): WfOption[] {
+  if (path.length === 0) return opts;
+  const n = opts.find(o => o.id === path[0]); if (!n) return [];
+  return getWfOptsAt(n.options, path.slice(1));
+}
+function addWfOpt(opts: WfOption[], path: string[], item: WfOption): WfOption[] {
+  if (path.length === 0) return [...opts, item];
+  return opts.map(o => o.id !== path[0] ? o : { ...o, options: addWfOpt(o.options, path.slice(1), item) });
+}
+function updateWfOptById(opts: WfOption[], path: string[], id: string, fn: (o: WfOption) => WfOption): WfOption[] {
+  if (path.length === 0) return opts.map(o => o.id === id ? fn(o) : o);
+  return opts.map(o => o.id !== path[0] ? o : { ...o, options: updateWfOptById(o.options, path.slice(1), id, fn) });
+}
+function removeWfOptById(opts: WfOption[], path: string[], id: string): WfOption[] {
+  if (path.length === 0) return opts.filter(o => o.id !== id);
+  return opts.map(o => o.id !== path[0] ? o : { ...o, options: removeWfOptById(o.options, path.slice(1), id) });
+}
+function reorderWfOptsAt(opts: WfOption[], path: string[], from: number, to: number): WfOption[] {
+  if (path.length === 0) return reorder(opts, from, to);
+  return opts.map(o => o.id !== path[0] ? o : { ...o, options: reorderWfOptsAt(o.options, path.slice(1), from, to) });
+}
+function updateWfOptAtPath(opts: WfOption[], path: string[], fn: (o: WfOption) => WfOption): WfOption[] {
+  if (path.length === 0) return opts;
+  return opts.map(o => {
+    if (o.id !== path[0]) return o;
+    if (path.length === 1) return fn(o);
+    return { ...o, options: updateWfOptAtPath(o.options, path.slice(1), fn) };
+  });
 }
 
 /* ── Slide-out panel ────────────────────────────────────────────── */
@@ -145,10 +206,10 @@ function SlidePanel({ panel, parts, onClose, onSave }: {
 
   useEffect(() => {
     if (!panel) return;
-    if (panel.mode === "edit-workflow") {
+    if (panel.mode === "edit-workflow" || panel.mode === "edit-workflow-option") {
       setName(panel.name); setMaxDuration(""); setOptionSet("human");
       setNumPeople("1"); setSopFiles([]); setMachFiles([]); setMaterials([]);
-    } else if (panel.mode === "edit-task") {
+    } else if (panel.mode === "edit-task" || panel.mode === "edit-task-option" || panel.mode === "edit-task-in-wf-option") {
       setName(panel.name); setMaxDuration(panel.maxDuration); setOptionSet(panel.optionSet);
       setNumPeople(String(panel.meta.numPeople || 1));
       setSopFiles(panel.meta.sopFiles); setMachFiles(panel.meta.machFiles);
@@ -162,15 +223,22 @@ function SlidePanel({ panel, parts, onClose, onSave }: {
   }, [panel]);
 
   const isOpen     = panel !== null;
-  const isWf       = panel?.mode === "new-workflow" || panel?.mode === "edit-workflow";
-  const isEdit     = panel?.mode === "edit-workflow" || panel?.mode === "edit-task";
+  const isWf       = panel?.mode === "new-workflow" || panel?.mode === "edit-workflow" || panel?.mode === "new-workflow-option" || panel?.mode === "edit-workflow-option";
+  const isEdit     = panel?.mode === "edit-workflow" || panel?.mode === "edit-task" || panel?.mode === "edit-task-option" || panel?.mode === "edit-workflow-option" || panel?.mode === "edit-task-in-wf-option";
   const isMachine  = optionSet === "machine";
 
   const title =
-    panel?.mode === "new-workflow" ? "New Workflow"
-    : panel?.mode === "edit-workflow" ? "Edit Workflow"
-    : panel?.mode === "new-task"     ? "New Task"
-    : panel?.mode === "edit-task"    ? "Edit Task" : "";
+    panel?.mode === "new-workflow"             ? "New Workflow"
+    : panel?.mode === "edit-workflow"          ? "Edit Workflow"
+    : panel?.mode === "new-task"               ? "New Task"
+    : panel?.mode === "edit-task"              ? "Edit Task"
+    : panel?.mode === "new-task-option"        ? "New Task Option"
+    : panel?.mode === "edit-task-option"       ? "Edit Task Option"
+    : panel?.mode === "new-workflow-option"    ? "New Workflow Option"
+    : panel?.mode === "edit-workflow-option"   ? "Edit Workflow Option"
+    : panel?.mode === "new-task-in-wf-option"  ? "Add Task to Option"
+    : panel?.mode === "edit-task-in-wf-option" ? "Edit Task in Option"
+    : "";
 
   const filteredParts = parts.filter(p =>
     (partQuery.trim() ? p.name.toLowerCase().includes(partQuery.toLowerCase()) : true) &&
@@ -597,15 +665,26 @@ function SlidePanel({ panel, parts, onClose, onSave }: {
 }
 
 /* ── Page ───────────────────────────────────────────────────────── */
-export default function TasksPage({ params }: { params: Promise<{ productId: string }> }) {
-  const { productId } = use(params);
+export function TasksContent({ productId, hideHeader = false }: { productId: string; hideHeader?: boolean }) {
   const [panel,        setPanel]        = useState<PanelState>(null);
   const [expandedWfs,  setExpandedWfs]  = useState<Set<string>>(new Set());
   const [expandedTasks,setExpandedTasks]= useState<Set<string>>(new Set());
   const [hoveredWf,    setHoveredWf]    = useState<string | null>(null);
   const [hoveredTask,  setHoveredTask]  = useState<string | null>(null);
-  const [taskMeta,     setTaskMeta]     = useState<Record<string, TaskMeta>>({});
-  const [dragWfId,     setDragWfId]     = useState<string | null>(null);
+  const [taskMeta,       setTaskMeta]       = useState<Record<string, TaskMeta>>({});
+  const [taskOptions,      setTaskOptions]      = useState<Record<string, LocalTask[]>>({});
+  const [wfOptions,        setWfOptions]        = useState<Record<string, WfOption[]>>({});
+  const [expandedWfOpts,   setExpandedWfOpts]   = useState<Set<string>>(new Set());
+  const [hoveredTaskOpt,   setHoveredTaskOpt]   = useState<string | null>(null);
+  const [hoveredWfOpt,     setHoveredWfOpt]     = useState<string | null>(null);
+  const [hoveredWfOptTask, setHoveredWfOptTask] = useState<string | null>(null);
+  const [dragTaskOpt,      setDragTaskOpt]      = useState<{ taskId: string; parentPath: string[]; optId: string } | null>(null);
+  const [overTaskOptId,    setOverTaskOptId]    = useState<string | null>(null);
+  const [dragWfOpt,        setDragWfOpt]        = useState<{ wfId: string; parentPath: string[]; optId: string } | null>(null);
+  const [overWfOptId,      setOverWfOptId]      = useState<string | null>(null);
+  const [dragWfOptTask,    setDragWfOptTask]    = useState<{ wfId: string; optPath: string[]; taskId: string } | null>(null);
+  const [overWfOptTaskId,  setOverWfOptTaskId]  = useState<string | null>(null);
+  const [dragWfId,       setDragWfId]       = useState<string | null>(null);
   const [overWfId,     setOverWfId]     = useState<string | null>(null);
   const [dragTask,     setDragTask]     = useState<{ wfId: string; taskId: string } | null>(null);
   const [overTaskId,   setOverTaskId]   = useState<string | null>(null);
@@ -656,6 +735,48 @@ export default function TasksPage({ params }: { params: Promise<{ productId: str
     setDragTask(null); setOverTaskId(null);
   };
 
+  const handleTaskOptDrop = (toOptId: string, taskId: string, parentPath: string[]) => {
+    if (!dragTaskOpt || dragTaskOpt.taskId !== taskId || dragTaskOpt.optId === toOptId) return;
+    if (dragTaskOpt.parentPath.join("/") !== parentPath.join("/")) return;
+    setTaskOptions(p => {
+      const root = p[taskId] ?? [];
+      const siblings = getTaskOptsAt(root, parentPath);
+      const from = siblings.findIndex(o => o.id === dragTaskOpt.optId);
+      const to   = siblings.findIndex(o => o.id === toOptId);
+      if (from === -1 || to === -1) return p;
+      return { ...p, [taskId]: reorderTaskOptsAt(root, parentPath, from, to) };
+    });
+    setDragTaskOpt(null); setOverTaskOptId(null);
+  };
+
+  const handleWfOptDrop = (toOptId: string, wfId: string, parentPath: string[]) => {
+    if (!dragWfOpt || dragWfOpt.wfId !== wfId || dragWfOpt.optId === toOptId) return;
+    if (dragWfOpt.parentPath.join("/") !== parentPath.join("/")) return;
+    setWfOptions(p => {
+      const root = p[wfId] ?? [];
+      const siblings = getWfOptsAt(root, parentPath);
+      const from = siblings.findIndex(o => o.id === dragWfOpt.optId);
+      const to   = siblings.findIndex(o => o.id === toOptId);
+      if (from === -1 || to === -1) return p;
+      return { ...p, [wfId]: reorderWfOptsAt(root, parentPath, from, to) };
+    });
+    setDragWfOpt(null); setOverWfOptId(null);
+  };
+
+  const handleWfOptTaskDrop = (toTaskId: string, wfId: string, optPath: string[]) => {
+    if (!dragWfOptTask || dragWfOptTask.optPath.join("/") !== optPath.join("/") || dragWfOptTask.taskId === toTaskId) return;
+    setWfOptions(p => ({
+      ...p,
+      [wfId]: updateWfOptAtPath(p[wfId] ?? [], optPath, o => {
+        const from = o.tasks.findIndex(t => t.id === dragWfOptTask.taskId);
+        const to   = o.tasks.findIndex(t => t.id === toTaskId);
+        if (from === -1 || to === -1) return o;
+        return { ...o, tasks: reorder([...o.tasks], from, to) };
+      }),
+    }));
+    setDragWfOptTask(null); setOverWfOptTaskId(null);
+  };
+
   const closePanel = () => setPanel(null);
 
   const handleSave = (data: SaveData) => {
@@ -681,31 +802,163 @@ export default function TasksPage({ params }: { params: Promise<{ productId: str
     } else if (panel.mode === "edit-task" && data.maxDuration && data.optionSet && data.meta) {
       updateTask(panel.taskId, { name: data.name, duration: data.maxDuration, optionSet: data.optionSet });
       setTaskMeta(m => ({ ...m, [panel.taskId]: data.meta! }));
+    } else if (panel.mode === "new-task-option" && data.maxDuration && data.optionSet && data.meta) {
+      const id = `topt-${Date.now()}`;
+      const newOpt: LocalTask = { id, name: data.name, duration: data.maxDuration!, optionSet: data.optionSet!, meta: data.meta!, options: [] };
+      setTaskOptions(p => ({ ...p, [panel.taskId]: addTaskOpt(p[panel.taskId] ?? [], panel.parentPath, newOpt) }));
+    } else if (panel.mode === "edit-task-option" && data.maxDuration && data.optionSet && data.meta) {
+      setTaskOptions(p => ({ ...p, [panel.taskId]: updateTaskOptById(p[panel.taskId] ?? [], panel.parentPath, panel.optId, o => ({ ...o, name: data.name, duration: data.maxDuration!, optionSet: data.optionSet!, meta: data.meta! })) }));
+    } else if (panel.mode === "new-workflow-option") {
+      const id = `wfopt-${Date.now()}`;
+      setWfOptions(p => ({ ...p, [panel.wfId]: addWfOpt(p[panel.wfId] ?? [], panel.parentPath, { id, name: data.name, tasks: [], options: [] }) }));
+    } else if (panel.mode === "edit-workflow-option") {
+      setWfOptions(p => ({ ...p, [panel.wfId]: updateWfOptById(p[panel.wfId] ?? [], panel.parentPath, panel.optId, o => ({ ...o, name: data.name })) }));
+    } else if (panel.mode === "new-task-in-wf-option" && data.maxDuration && data.optionSet && data.meta) {
+      const id = `topt-${Date.now()}`;
+      const newTask: LocalTask = { id, name: data.name, duration: data.maxDuration!, optionSet: data.optionSet!, meta: data.meta!, options: [] };
+      setWfOptions(p => ({ ...p, [panel.wfId]: updateWfOptAtPath(p[panel.wfId] ?? [], panel.optPath, o => ({ ...o, tasks: [...o.tasks, newTask] })) }));
+    } else if (panel.mode === "edit-task-in-wf-option" && data.maxDuration && data.optionSet && data.meta) {
+      setWfOptions(p => ({ ...p, [panel.wfId]: updateWfOptAtPath(p[panel.wfId] ?? [], panel.optPath, o => ({ ...o, tasks: o.tasks.map(t => t.id === panel.taskId ? { ...t, name: data.name, duration: data.maxDuration!, optionSet: data.optionSet!, meta: data.meta! } : t) })) }));
     }
     closePanel();
   };
 
   const totalTime = tasks.reduce((s, t) => s + t.duration, 0);
 
+  /* ── Recursive option renderers ─────────────────────────────── */
+  const renderTaskOptions = (opts: LocalTask[], taskId: string, parentPath: string[], depth: number): React.ReactNode =>
+    opts.map((opt, oi) => {
+      const letter  = String.fromCharCode(66 + oi);
+      const isHov   = hoveredTaskOpt === opt.id;
+      const isDrag  = dragTaskOpt?.optId === opt.id && dragTaskOpt.taskId === taskId;
+      const isOver  = overTaskOptId === opt.id && dragTaskOpt?.taskId === taskId && dragTaskOpt.parentPath.join("/") === parentPath.join("/");
+      return (
+        <React.Fragment key={opt.id}>
+          <div
+            draggable
+            onDragStart={e => { e.stopPropagation(); setDragTaskOpt({ taskId, parentPath, optId: opt.id }); }}
+            onDragEnd={() => { setDragTaskOpt(null); setOverTaskOptId(null); }}
+            onDragOver={e => { if (dragTaskOpt?.taskId === taskId && dragTaskOpt.parentPath.join("/") === parentPath.join("/") && dragTaskOpt.optId !== opt.id) { e.preventDefault(); setOverTaskOptId(opt.id); } }}
+            onDragLeave={() => setOverTaskOptId(null)}
+            onDrop={() => handleTaskOptDrop(opt.id, taskId, parentPath)}
+            onMouseEnter={() => setHoveredTaskOpt(opt.id)}
+            onMouseLeave={() => setHoveredTaskOpt(null)}
+            style={{ ...s.taskRow, backgroundColor: isOver ? "rgba(245,99,0,0.08)" : `rgba(245,99,0,${Math.min(0.03 + depth * 0.02, 0.1)})`, borderBottom: "1px solid var(--border)", paddingLeft: 28 + depth * 12, opacity: isDrag ? 0.4 : 1, transition: "background-color 0.1s, opacity 0.15s" }}>
+            <GripVertical size={12} color="var(--text-tertiary)" style={{ cursor: "grab", flexShrink: 0 }} />
+            <span style={s.optionBadge}>{letter}</span>
+            {opt.options.length > 0 && <span style={s.optionBadge}>A</span>}
+            <span style={s.taskName}>{opt.name}</span>
+            <span style={{ fontSize: 9, fontWeight: 700, borderRadius: 4, padding: "2px 6px", flexShrink: 0, backgroundColor: opt.optionSet === "machine" ? "rgba(37,99,235,0.12)" : "rgba(5,150,105,0.12)", color: opt.optionSet === "machine" ? "#2563EB" : "#059669" }}>{opt.optionSet}</span>
+            <span style={s.taskDur}>{fmtMin(opt.duration)}</span>
+            <button style={{ ...s.actionBtn, opacity: isHov ? 1 : 0, transition: "opacity 0.12s", color: "var(--accent)" }}
+              onClick={() => setPanel({ mode: "new-task-option", taskId, parentPath: [...parentPath, opt.id] })}
+              title="Add sub-option"><GitBranch size={11} /></button>
+            <button style={{ ...s.actionBtn, opacity: isHov ? 1 : 0, transition: "opacity 0.12s" }}
+              onClick={() => setPanel({ mode: "edit-task-option", taskId, parentPath, optId: opt.id, name: opt.name, maxDuration: String(opt.duration), optionSet: opt.optionSet, meta: opt.meta })}
+              title="Edit option"><Pencil size={11} /></button>
+            <button style={{ ...s.actionBtn, opacity: isHov ? 1 : 0, transition: "opacity 0.12s" }}
+              onClick={() => setTaskOptions(p => ({ ...p, [taskId]: removeTaskOptById(p[taskId] ?? [], parentPath, opt.id) }))}
+              title="Remove option"><X size={11} /></button>
+          </div>
+          {renderTaskOptions(opt.options, taskId, [...parentPath, opt.id], depth + 1)}
+        </React.Fragment>
+      );
+    });
+
+  const renderWfOptions = (opts: WfOption[], wfId: string, parentPath: string[], depth: number): React.ReactNode =>
+    opts.map((opt, oi) => {
+      const letter    = String.fromCharCode(66 + oi);
+      const isOptOpen = expandedWfOpts.has(opt.id);
+      const isHov     = hoveredWfOpt === opt.id;
+      const isDrag    = dragWfOpt?.optId === opt.id && dragWfOpt.wfId === wfId;
+      const isOver    = overWfOptId === opt.id && dragWfOpt?.wfId === wfId && dragWfOpt.parentPath.join("/") === parentPath.join("/");
+      const optPath   = [...parentPath, opt.id];
+      return (
+        <React.Fragment key={opt.id}>
+          <div
+            draggable
+            onDragStart={e => { e.stopPropagation(); setDragWfOpt({ wfId, parentPath, optId: opt.id }); }}
+            onDragEnd={() => { setDragWfOpt(null); setOverWfOptId(null); }}
+            onDragOver={e => { if (dragWfOpt?.wfId === wfId && dragWfOpt.parentPath.join("/") === parentPath.join("/") && dragWfOpt.optId !== opt.id) { e.preventDefault(); setOverWfOptId(opt.id); } }}
+            onDragLeave={() => setOverWfOptId(null)}
+            onDrop={() => handleWfOptDrop(opt.id, wfId, parentPath)}
+            onMouseEnter={() => setHoveredWfOpt(opt.id)}
+            onMouseLeave={() => setHoveredWfOpt(null)}
+            style={{ margin: `0 10px 8px`, marginLeft: 10 + depth * 12, border: `1.5px dashed ${isOver ? "#F56300" : "#F5630055"}`, borderRadius: 8, overflow: "hidden", opacity: isDrag ? 0.4 : 1, transition: "opacity 0.15s, border-color 0.1s" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", backgroundColor: `rgba(245,99,0,${Math.min(0.04 + depth * 0.02, 0.12)})` }}>
+              <GripVertical size={14} color="var(--text-tertiary)" style={{ cursor: "grab", flexShrink: 0 }} />
+              <button onClick={() => setExpandedWfOpts(prev => { const n = new Set(prev); n.has(opt.id) ? n.delete(opt.id) : n.add(opt.id); return n; })} style={s.chevron}>
+                {isOptOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+              </button>
+              <span style={s.optionBadge}>{letter}</span>
+              {opt.options.length > 0 && <span style={s.optionBadge}>A</span>}
+              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", flex: 1 }}>{opt.name}</span>
+              <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>{opt.tasks.length} tasks</span>
+              <button style={{ ...s.actionBtn, opacity: isHov ? 1 : 0, transition: "opacity 0.12s", color: "var(--accent)" }}
+                onClick={() => setPanel({ mode: "new-workflow-option", wfId, parentPath: optPath })}
+                title="Add sub-option"><GitBranch size={12} /></button>
+              <button style={{ ...s.actionBtn, opacity: isHov ? 1 : 0, transition: "opacity 0.12s" }}
+                onClick={() => setPanel({ mode: "edit-workflow-option", wfId, parentPath, optId: opt.id, name: opt.name })}
+                title="Edit option"><Pencil size={12} /></button>
+              <button style={s.actionBtn}
+                onClick={() => setWfOptions(p => ({ ...p, [wfId]: removeWfOptById(p[wfId] ?? [], parentPath, opt.id) }))}
+                title="Remove option"><X size={12} /></button>
+            </div>
+            {isOptOpen && (
+              <div style={{ borderTop: "1px dashed #F5630033" }}>
+                {opt.tasks.map((ot, ti) => (
+                  <div key={ot.id}
+                    draggable
+                    onDragStart={e => { e.stopPropagation(); setDragWfOptTask({ wfId, optPath, taskId: ot.id }); }}
+                    onDragEnd={() => { setDragWfOptTask(null); setOverWfOptTaskId(null); }}
+                    onDragOver={e => { if (dragWfOptTask?.optPath.join("/") === optPath.join("/") && dragWfOptTask.taskId !== ot.id) { e.preventDefault(); setOverWfOptTaskId(ot.id); } }}
+                    onDragLeave={() => setOverWfOptTaskId(null)}
+                    onDrop={() => handleWfOptTaskDrop(ot.id, wfId, optPath)}
+                    onMouseEnter={() => setHoveredWfOptTask(ot.id)}
+                    onMouseLeave={() => setHoveredWfOptTask(null)}
+                    style={{ ...s.taskRow, borderBottom: "1px solid var(--border)", opacity: dragWfOptTask?.taskId === ot.id ? 0.4 : 1, backgroundColor: overWfOptTaskId === ot.id ? "rgba(245,99,0,0.05)" : "transparent", transition: "opacity 0.15s, background-color 0.1s" }}>
+                    <GripVertical size={12} color="var(--text-tertiary)" style={{ cursor: "grab", flexShrink: 0 }} />
+                    <span style={s.taskIdx}>{ti + 1}</span>
+                    <span style={s.taskName}>{ot.name}</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, borderRadius: 4, padding: "2px 6px", flexShrink: 0, backgroundColor: ot.optionSet === "machine" ? "rgba(37,99,235,0.12)" : "rgba(5,150,105,0.12)", color: ot.optionSet === "machine" ? "#2563EB" : "#059669" }}>{ot.optionSet}</span>
+                    <span style={s.taskDur}>{fmtMin(ot.duration)}</span>
+                    <button style={{ ...s.actionBtn, opacity: hoveredWfOptTask === ot.id ? 1 : 0, transition: "opacity 0.12s" }}
+                      onClick={() => setPanel({ mode: "edit-task-in-wf-option", wfId, optPath, taskId: ot.id, name: ot.name, maxDuration: String(ot.duration), optionSet: ot.optionSet, meta: ot.meta })}
+                      title="Edit task"><Pencil size={11} /></button>
+                    <button style={{ ...s.actionBtn, opacity: hoveredWfOptTask === ot.id ? 1 : 0, transition: "opacity 0.12s" }}
+                      onClick={() => setWfOptions(p => ({ ...p, [wfId]: updateWfOptAtPath(p[wfId] ?? [], optPath, o => ({ ...o, tasks: o.tasks.filter(x => x.id !== ot.id) })) }))}
+                      title="Remove task"><X size={11} /></button>
+                  </div>
+                ))}
+                <button style={s.addTaskSkeleton} onClick={() => setPanel({ mode: "new-task-in-wf-option", wfId, optPath })}>
+                  <Plus size={13} strokeWidth={2} /> Add task to option
+                </button>
+              </div>
+            )}
+          </div>
+          {renderWfOptions(opt.options, wfId, optPath, depth + 1)}
+        </React.Fragment>
+      );
+    });
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 100px)", gap: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", height: hideHeader ? undefined : "calc(100vh - 100px)", gap: 0 }}>
 
       {/* Header */}
+      {!hideHeader && (
       <div style={s.header}>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <Link href="/processes" style={s.back}>
             <ArrowLeft size={15} strokeWidth={2} /> Processes
           </Link>
           <h2 style={s.title}>Task Manager</h2>
-          <Link href={`/processes/${productId}/planner`} style={{ ...s.back, color: "var(--text-secondary)", fontSize: 12 }}>
-            <BarChart3 size={13} /> Production Planner
-          </Link>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <div style={s.pill}><Clock size={11} color="var(--text-secondary)" /><span>{fmtMin(totalTime)} total</span></div>
           <div style={s.pill}><Workflow size={11} color="var(--text-secondary)" /><span>{workflows.length} workflows</span></div>
         </div>
       </div>
+      )}
 
       {/* Section intro */}
       <div style={{ flexShrink: 0, marginBottom: 16 }}>
@@ -751,8 +1004,18 @@ export default function TasksPage({ params }: { params: Promise<{ productId: str
                   </button>
                   <Workflow size={14} color="#F56300" />
                   <span style={s.wfName}>{wf.name}</span>
+                  {(wfOptions[wf.id] ?? []).length > 0 && (
+                    <span style={s.optionBadge}>A</span>
+                  )}
                   <span style={s.wfMeta}>{wfTasks.length} tasks · {fmtMin(wfTime)} max</span>
                   <div style={{ flex: 1 }} />
+                  <button
+                    style={{ ...s.actionBtn, opacity: hovered ? 1 : 0, transition: "opacity 0.12s", color: "var(--accent)" }}
+                    onClick={() => setPanel({ mode: "new-workflow-option", wfId: wf.id, parentPath: [] })}
+                    title="Add workflow option"
+                  >
+                    <GitBranch size={12} />
+                  </button>
                   <button
                     style={{ ...s.actionBtn, opacity: hovered ? 1 : 0, transition: "opacity 0.12s" }}
                     onClick={() => setPanel({ mode: "edit-workflow", wfId: wf.id, name: wf.name })}
@@ -798,6 +1061,9 @@ export default function TasksPage({ params }: { params: Promise<{ productId: str
                             </button>
                             <span style={s.taskIdx}>{idx + 1}</span>
                             <span style={s.taskName}>{t.name}</span>
+                            {(taskOptions[t.id] ?? []).length > 0 && (
+                              <span style={s.optionBadge}>A</span>
+                            )}
                             <span style={{
                               fontSize: 9, fontWeight: 700, borderRadius: 4, padding: "2px 6px", flexShrink: 0,
                               backgroundColor: t.optionSet === "machine" ? "rgba(37,99,235,0.12)" : "rgba(5,150,105,0.12)",
@@ -806,6 +1072,13 @@ export default function TasksPage({ params }: { params: Promise<{ productId: str
                               {t.optionSet}
                             </span>
                             <span style={s.taskDur}>{fmtMin(t.duration)}</span>
+                            <button
+                              style={{ ...s.actionBtn, opacity: taskHov ? 1 : 0, transition: "opacity 0.12s", color: "var(--accent)" }}
+                              onClick={() => setPanel({ mode: "new-task-option", taskId: t.id, parentPath: [] })}
+                              title="Add option"
+                            >
+                              <GitBranch size={11} />
+                            </button>
                             <button
                               style={{ ...s.actionBtn, opacity: taskHov ? 1 : 0, transition: "opacity 0.12s" }}
                               onClick={() => setPanel({ mode: "edit-task", taskId: t.id, name: t.name, maxDuration: String(t.duration), optionSet: t.optionSet, meta })}
@@ -821,6 +1094,9 @@ export default function TasksPage({ params }: { params: Promise<{ productId: str
                               <X size={12} />
                             </button>
                           </div>
+
+                          {/* Task options — recursive */}
+                          {renderTaskOptions(taskOptions[t.id] ?? [], t.id, [], 0)}
 
                           {/* Expanded task detail */}
                           {isTaskOpen && (
@@ -895,6 +1171,9 @@ export default function TasksPage({ params }: { params: Promise<{ productId: str
                     <button style={s.addTaskSkeleton} onClick={() => setPanel({ mode: "new-task", targetWfId: wf.id })}>
                       <Plus size={13} strokeWidth={2} /> Add task
                     </button>
+
+                    {/* Workflow options — recursive */}
+                    {renderWfOptions(wfOptions[wf.id] ?? [], wf.id, [], 0)}
                   </div>
                 )}
               </div>
@@ -943,6 +1222,8 @@ const s: Record<string, React.CSSProperties> = {
   fileNumBadge:{ fontSize: 9, fontWeight: 700, width: 16, height: 16, borderRadius: "50%", backgroundColor: "var(--border)", color: "var(--text-secondary)", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
   matChip:     { display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 8px", borderRadius: 999, border: "1px solid var(--border)", backgroundColor: "var(--bg)", fontSize: 12, color: "var(--text-primary)" },
   typePill:    { fontSize: 9, fontWeight: 700, padding: "1px 4px", borderRadius: 3 },
+  /* Option badge */
+  optionBadge: { fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 4, backgroundColor: "rgba(245,99,0,0.15)", color: "#F56300", flexShrink: 0, letterSpacing: "0.04em" },
   /* Skeleton buttons */
   addTaskSkeleton: { width: "100%", height: 36, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1.5px dashed var(--border)", background: "none", cursor: "pointer", fontSize: 12, fontWeight: 500, color: "var(--text-tertiary)", margin: "6px 0" },
   addWfSkeleton:   { width: "100%", height: 52, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, border: "2px dashed var(--border)", borderRadius: 12, background: "none", cursor: "pointer", fontSize: 13, fontWeight: 500, color: "var(--text-tertiary)" },
@@ -974,3 +1255,8 @@ const sp: Record<string, React.CSSProperties> = {
   primaryBtn:    { height: 40, padding: "0 20px", backgroundColor: "var(--btn-primary)", color: "var(--btn-primary-text)", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer" },
   cancelBtn:     { height: 40, padding: "0 14px", backgroundColor: "var(--bg)", border: "1px solid var(--input-border)", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" },
 };
+
+export default function TasksPage({ params }: { params: Promise<{ productId: string }> }) {
+  const { productId } = use(params);
+  return <TasksContent productId={productId} />;
+}

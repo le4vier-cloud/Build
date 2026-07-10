@@ -2,13 +2,14 @@
 
 import { useState, Fragment } from "react";
 import {
-  Users, Plus, Timer, CalendarDays,
+  Users, Timer, CalendarDays,
   CreditCard, Fingerprint, ScanFace, KeyRound, QrCode, Wifi, Scan,
   LogIn, LogOut, Coffee, RotateCcw, Info,
-  ChevronDown, ChevronUp, X,
+  ChevronDown, ChevronUp, X, Plus,
   Pencil, Trash2, SlidersHorizontal,
 } from "lucide-react";
 import { ModuleLayout } from "@/components/ui/module-layout";
+import { RightPanel } from "@/components/ui/right-panel";
 import type {
   HardwareAuthType, HardwareCredential, ClockEvent, Shift, StaffMember,
   ClockEventType, ShiftStatus, StaffRole,
@@ -146,7 +147,6 @@ const MOCK_ROLES: StaffRole[] = [
     parent_role_id: "r1", color: "#4A90E2", created_at: "2026-01-01T00:00:00Z" },
 ];
 
-/** Returns true if `candidateId` is a descendant of `ancestorId` in the role tree. */
 function isDescendant(candidateId: string, ancestorId: string, roles: StaffRole[]): boolean {
   let cur = roles.find((r) => r.id === candidateId);
   while (cur?.parent_role_id) {
@@ -197,7 +197,7 @@ function ShiftPill({ status }: { status: ShiftStatus }) {
   );
 }
 
-/* ── Auth type picker (grid of method buttons) ───────────────────── */
+/* ── Auth type picker ─────────────────────────────────────────────── */
 function AuthTypePicker({ value, onChange }: {
   value: HardwareAuthType | null;
   onChange: (t: HardwareAuthType) => void;
@@ -224,7 +224,7 @@ function AuthTypePicker({ value, onChange }: {
   );
 }
 
-/* ── Credential Enrollment (inline in Add Staff form) ─────────────── */
+/* ── Credential Enrollment ────────────────────────────────────────── */
 type PendingCred = { auth_type: HardwareAuthType; token: string; label: string };
 
 function CredentialEnrollment({
@@ -253,7 +253,6 @@ function CredentialEnrollment({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {/* Enrolled list */}
       {credentials.map((c, i) => (
         <div key={i} style={{
           display: "flex", alignItems: "center", gap: 10,
@@ -276,7 +275,6 @@ function CredentialEnrollment({
         </div>
       ))}
 
-      {/* Add form */}
       {adding ? (
         <div style={{
           padding: 16, borderRadius: 10,
@@ -387,7 +385,6 @@ function RolesModal({ onClose }: { onClose: () => void }) {
   function remove(id: string) {
     const hasKids = roles.some((r) => r.parent_role_id === id);
     if (hasKids && confirmDel !== id) { setConfirmDel(id); return; }
-    // Orphan children up to deleted role's parent
     const parentId = roles.find((r) => r.id === id)?.parent_role_id;
     setRoles((rs) =>
       rs.filter((r) => r.id !== id)
@@ -412,13 +409,10 @@ function RolesModal({ onClose }: { onClose: () => void }) {
             borderBottom: "1px solid var(--border)",
             backgroundColor: editingId === role.id ? "var(--surface)" : undefined,
           }}>
-            {/* Color dot */}
             <div style={{
               width: 9, height: 9, borderRadius: "50%", flexShrink: 0,
               backgroundColor: role.color ?? "#A0A0B8",
             }} />
-
-            {/* Name + description */}
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>
                 {role.name}
@@ -429,15 +423,11 @@ function RolesModal({ onClose }: { onClose: () => void }) {
                 </div>
               )}
             </div>
-
-            {/* Staff count */}
             {staffCount > 0 && (
               <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
                 {staffCount} staff
               </span>
             )}
-
-            {/* Delete confirm */}
             {confirmDel === role.id ? (
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span style={{ fontSize: 11, color: "#E55F1F" }}>
@@ -457,15 +447,12 @@ function RolesModal({ onClose }: { onClose: () => void }) {
               </div>
             )}
           </div>
-
-          {/* Children */}
           {renderTree(role.id, depth + 1)}
         </Fragment>
       );
     });
   }
 
-  // When editing, exclude the role itself and its descendants from the parent options
   const parentOptions = editingId
     ? roles.filter((r) => r.id !== editingId && !isDescendant(r.id, editingId, roles))
     : roles;
@@ -487,7 +474,6 @@ function RolesModal({ onClose }: { onClose: () => void }) {
         overflow: "hidden",
         boxShadow: "0 32px 80px rgba(0,0,0,0.45)",
       }}>
-        {/* Header */}
         <div style={{
           display: "flex", alignItems: "flex-start",
           padding: "18px 20px", borderBottom: "1px solid var(--border)",
@@ -512,9 +498,7 @@ function RolesModal({ onClose }: { onClose: () => void }) {
           <button onClick={onClose} style={mb.icon}><X size={16} /></button>
         </div>
 
-        {/* Scrollable body */}
         <div style={{ overflowY: "auto", flex: 1 }}>
-          {/* Tree */}
           {roles.filter((r) => !r.parent_role_id).length === 0 && !showForm ? (
             <p style={{ padding: "32px 20px", color: "var(--text-tertiary)", fontSize: 14, textAlign: "center" }}>
               No roles defined yet.
@@ -523,7 +507,6 @@ function RolesModal({ onClose }: { onClose: () => void }) {
             renderTree(undefined, 0)
           )}
 
-          {/* Add / Edit form */}
           {showForm && (
             <div style={{
               padding: 20, borderTop: "1px solid var(--border)",
@@ -622,17 +605,12 @@ function StaffList({ onAddStaff }: { onAddStaff: () => void }) {
         <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
           {MOCK_STAFF.length} staff members
         </span>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            onClick={() => setShowRoles(true)}
-            style={{ ...btn.ghost, display: "flex", alignItems: "center", gap: 6 }}
-          >
-            <SlidersHorizontal size={14} /> Manage Roles
-          </button>
-          <button onClick={onAddStaff} style={{ ...btn.primary, display: "flex", alignItems: "center", gap: 6 }}>
-            <Plus size={14} /> Add Staff
-          </button>
-        </div>
+        <button
+          onClick={() => setShowRoles(true)}
+          style={{ ...btn.ghost, display: "flex", alignItems: "center", gap: 6 }}
+        >
+          <SlidersHorizontal size={14} /> Manage Roles
+        </button>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -644,12 +622,10 @@ function StaffList({ onAddStaff }: { onAddStaff: () => void }) {
               border: "1px solid var(--border)", borderRadius: 10,
               backgroundColor: "var(--surface)", overflow: "hidden",
             }}>
-              {/* Row */}
               <div
                 onClick={() => setExpandedId(expanded ? null : staff.id)}
                 style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", cursor: "pointer" }}
               >
-                {/* Avatar */}
                 <div style={{
                   width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
                   backgroundColor: "var(--bg)", border: "1px solid var(--border)",
@@ -658,31 +634,21 @@ function StaffList({ onAddStaff }: { onAddStaff: () => void }) {
                 }}>
                   {initials(staff.name)}
                 </div>
-
-                {/* Name + email */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: 14 }}>{staff.name}</div>
                   <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{staff.email}</div>
                 </div>
-
-                {/* Role */}
                 <span style={{ width: 90, fontSize: 12, color: "var(--text-secondary)" }}>
                   {staff.user_role === "back_end" ? "Back End" : "Front End"}
                 </span>
-
-                {/* Wage */}
                 <span style={{ width: 80, fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 }}>
                   R{staff.hourly_wage}/hr
                 </span>
-
-                {/* Credential badges */}
                 <div style={{ display: "flex", gap: 4, width: 110, flexWrap: "wrap" }}>
                   {creds.length === 0
                     ? <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>No credentials</span>
                     : creds.map((c) => <CredBadge key={c.id} type={c.auth_type} />)}
                 </div>
-
-                {/* Status */}
                 <span style={{
                   display: "inline-block", padding: "2px 8px", borderRadius: 999,
                   fontSize: 11, fontWeight: 600, width: 66,
@@ -692,14 +658,11 @@ function StaffList({ onAddStaff }: { onAddStaff: () => void }) {
                 }}>
                   {staff.is_active ? "Active" : "Inactive"}
                 </span>
-
-                {/* Chevron */}
                 <span style={{ color: "var(--text-tertiary)", flexShrink: 0 }}>
                   {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                 </span>
               </div>
 
-              {/* Expanded credentials panel */}
               {expanded && (
                 <div style={{
                   borderTop: "1px solid var(--border)",
@@ -754,13 +717,29 @@ function StaffList({ onAddStaff }: { onAddStaff: () => void }) {
         })}
       </div>
 
+      {/* Add button at bottom of list */}
+      <button
+        onClick={onAddStaff}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+          width: "100%", padding: "10px", borderRadius: 8,
+          border: "1.5px dashed var(--border)", backgroundColor: "transparent",
+          color: "var(--text-secondary)", fontSize: 13, fontWeight: 500, cursor: "pointer",
+          transition: "border-color 0.15s, color 0.15s",
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.color = "var(--accent)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-secondary)"; }}
+      >
+        <Plus size={15} /> Add Staff Member
+      </button>
+
       {showRoles && <RolesModal onClose={() => setShowRoles(false)} />}
     </div>
   );
 }
 
-/* ── Add Staff Form ───────────────────────────────────────────────── */
-function AddStaffForm() {
+/* ── Add Staff Form (panel content) ──────────────────────────────── */
+function AddStaffForm({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState({
     name: "", email: "", password: "",
     hourly_wage: "", user_role: "front_end",
@@ -768,56 +747,56 @@ function AddStaffForm() {
   const [pendingCreds, setPendingCreds] = useState<PendingCred[]>([]);
   const upd = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
+  function handleSubmit() {
+    onClose();
+  }
+
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
-      {/* Left — personal info */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-        <h3 style={s.sectionTitle}>Personal Info</h3>
-
-        <div style={s.imageUpload}>
-          <span style={{ fontSize: 12, color: "var(--text-tertiary)", textAlign: "center", padding: 8 }}>
-            Click to upload photo
-          </span>
-        </div>
-
-        <Field label="Full Name *"       value={form.name}        onChange={(v) => upd("name", v)}        placeholder="Jane Smith" />
-        <Field label="Email *"           value={form.email}       onChange={(v) => upd("email", v)}       placeholder="jane@company.com" type="email" />
-        <Field label="Password *"        value={form.password}    onChange={(v) => upd("password", v)}    placeholder="••••••••"           type="password" />
-        <Field label="Hourly Wage (R) *" value={form.hourly_wage} onChange={(v) => upd("hourly_wage", v)} placeholder="85"                 type="number" />
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={s.imageUpload}>
+        <span style={{ fontSize: 12, color: "var(--text-tertiary)", textAlign: "center", padding: 8 }}>
+          Click to upload photo
+        </span>
       </div>
 
-      {/* Right — role + credentials */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-        <h3 style={s.sectionTitle}>Role & Access</h3>
-
-        <div style={s.fieldGroup}>
-          <label style={s.label}>User Role *</label>
-          <select value={form.user_role} onChange={(e) => upd("user_role", e.target.value)} style={s.select}>
-            <option value="front_end">Front End</option>
-            <option value="back_end">Back End</option>
-          </select>
-        </div>
-
-        <div style={s.fieldGroup}>
-          <label style={s.label}>Staff Roles</label>
-          <select style={s.select}><option value="">Choose from staff roles</option></select>
-        </div>
-
-        {/* Hardware credential enrollment */}
-        <div style={s.fieldGroup}>
-          <label style={s.label}>Hardware Credentials</label>
-          <p style={{ fontSize: 12, color: "var(--text-tertiary)", margin: "0 0 8px", lineHeight: 1.6 }}>
-            Add any auth methods this person will use to clock in — RFID cards, fingerprint scanners,
-            face cameras, PIN pads, or QR badges. Any hardware your facility uses is supported.
-            Multiple methods can be enrolled as a primary + backup.
-          </p>
-          <CredentialEnrollment credentials={pendingCreds} onChange={setPendingCreds} />
-        </div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.1em" }}>
+        Personal Info
       </div>
 
-      <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end", paddingTop: 8 }}>
-        <button style={btn.primary}>Add Staff Member</button>
+      <Field label="Full Name *"       value={form.name}        onChange={(v) => upd("name", v)}        placeholder="Jane Smith" />
+      <Field label="Email *"           value={form.email}       onChange={(v) => upd("email", v)}       placeholder="jane@company.com" type="email" />
+      <Field label="Password *"        value={form.password}    onChange={(v) => upd("password", v)}    placeholder="••••••••" type="password" />
+      <Field label="Hourly Wage (R) *" value={form.hourly_wage} onChange={(v) => upd("hourly_wage", v)} placeholder="85" type="number" />
+
+      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.1em", marginTop: 4 }}>
+        Role & Access
       </div>
+
+      <div style={s.fieldGroup}>
+        <label style={s.label}>User Role *</label>
+        <select value={form.user_role} onChange={(e) => upd("user_role", e.target.value)} style={s.select}>
+          <option value="front_end">Front End</option>
+          <option value="back_end">Back End</option>
+        </select>
+      </div>
+
+      <div style={s.fieldGroup}>
+        <label style={s.label}>Staff Roles</label>
+        <select style={s.select}><option value="">Choose from staff roles</option></select>
+      </div>
+
+      <div style={s.fieldGroup}>
+        <label style={s.label}>Hardware Credentials</label>
+        <p style={{ fontSize: 12, color: "var(--text-tertiary)", margin: "0 0 8px", lineHeight: 1.6 }}>
+          Add auth methods for clocking in — RFID, fingerprint, face, PIN, or QR badge.
+          Multiple methods can be enrolled as primary + backup.
+        </p>
+        <CredentialEnrollment credentials={pendingCreds} onChange={setPendingCreds} />
+      </div>
+
+      <button onClick={handleSubmit} style={{ ...btn.primary, marginTop: 8 }}>
+        Add Staff Member
+      </button>
     </div>
   );
 }
@@ -833,7 +812,6 @@ function ClockEventsView() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      {/* Controls */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <select value={filterStaff} onChange={(e) => setFilterStaff(e.target.value)} style={{ ...s.select, width: 180 }}>
           <option value="all">All Staff</option>
@@ -845,7 +823,6 @@ function ClockEventsView() {
         </button>
       </div>
 
-      {/* Manual entry form */}
       {showManual && (
         <div style={{
           padding: 16, borderRadius: 10, border: "1px solid var(--border)",
@@ -882,7 +859,6 @@ function ClockEventsView() {
         </div>
       )}
 
-      {/* Table */}
       <table style={t.table}>
         <thead>
           <tr>
@@ -938,7 +914,6 @@ function ClockEventsView() {
         </tbody>
       </table>
 
-      {/* Hardware integration note */}
       <div style={{
         display: "flex", alignItems: "flex-start", gap: 10,
         padding: "12px 14px", borderRadius: 8,
@@ -1056,27 +1031,30 @@ function Field({ label, value, onChange, placeholder = "Type here...", type = "t
 /* ── Main Page ────────────────────────────────────────────────────── */
 const SUB_NAV = [
   { key: "list",   label: "Staff",        icon: <Users        size={15} strokeWidth={1.8} /> },
-  { key: "add",    label: "Add Staff",    icon: <Plus         size={15} strokeWidth={2}   /> },
   { key: "clocks", label: "Clock Events", icon: <Timer        size={15} strokeWidth={1.8} /> },
   { key: "shifts", label: "Shifts",       icon: <CalendarDays size={15} strokeWidth={1.8} /> },
 ];
 
 export default function StaffPage() {
-  const [view, setView] = useState<string | null>(null);
+  const [view, setView]         = useState("list");
+  const [panelOpen, setPanelOpen] = useState(false);
 
   return (
-    <ModuleLayout title="Staff" subNav={SUB_NAV} activeView={view} onViewChange={setView}>
-      {view === "list"   && <StaffList onAddStaff={() => setView("add")} />}
-      {view === "add"    && <AddStaffForm />}
-      {view === "clocks" && <ClockEventsView />}
-      {view === "shifts" && <ShiftsView />}
-    </ModuleLayout>
+    <>
+      <ModuleLayout title="Staff" subNav={SUB_NAV} activeView={view} onViewChange={setView}>
+        {view === "list"   && <StaffList onAddStaff={() => setPanelOpen(true)} />}
+        {view === "clocks" && <ClockEventsView />}
+        {view === "shifts" && <ShiftsView />}
+      </ModuleLayout>
+      <RightPanel open={panelOpen} onClose={() => setPanelOpen(false)} title="Add Staff Member">
+        <AddStaffForm onClose={() => setPanelOpen(false)} />
+      </RightPanel>
+    </>
   );
 }
 
 /* ── Styles ───────────────────────────────────────────────────────── */
 const s: Record<string, React.CSSProperties> = {
-  sectionTitle: { fontSize: 18, fontWeight: 600, color: "var(--text-primary)", margin: 0 },
   fieldGroup:   { display: "flex", flexDirection: "column", gap: 6 },
   label:        { fontSize: 13, fontWeight: 500, color: "var(--text-primary)" },
   input: {
@@ -1121,7 +1099,6 @@ const btn: Record<string, React.CSSProperties> = {
   },
 };
 
-/* Modal button styles */
 const mb: Record<string, React.CSSProperties> = {
   primary: {
     height: 32, padding: "0 16px",
@@ -1151,7 +1128,6 @@ const mb: Record<string, React.CSSProperties> = {
   },
 };
 
-/* Modal field styles */
 const mf: Record<string, React.CSSProperties> = {
   group:  { display: "flex", flexDirection: "column", gap: 6 },
   label:  { fontSize: 13, fontWeight: 500, color: "var(--text-primary)" },

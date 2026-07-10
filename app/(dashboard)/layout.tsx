@@ -47,16 +47,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <Sidebar />
         </div>
 
-        {/* 20px gap between sidebar and content — animates with the sidebar */}
-        <div
-          style={{
-            width: visible ? 20 : 0,
-            flexShrink: 0,
-            backgroundColor: "var(--bg)",
-            transition: "width 0.28s cubic-bezier(0.4,0,0.2,1)",
-          }}
-        />
-
         <main
           style={{
             flex: 1,

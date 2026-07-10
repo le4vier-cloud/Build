@@ -84,12 +84,18 @@ export const WALL_CONFIG: Record<WallType, {
 };
 
 export interface FactoryWall {
-  id:          string;
-  wallType:    WallType;
-  orientation: "horizontal" | "vertical";
-  position:    { x: number; y: number };
-  /** Length along the long axis (flow units) */
-  length:      number;
-  /** Thickness — clamped to WALL_CONFIG min/max (flow units) */
-  thickness:   number;
+  id:        string;
+  wallType:  WallType;
+  start:     { x: number; y: number };
+  end:       { x: number; y: number };
+  thickness: number;
+}
+
+export interface WorkflowAttachment {
+  planId:       string;
+  workflowId:   string;
+  workflowName: string;
+  zoneNodeId:   string;
+  durationH:    number;
+  color:        string;
 }
