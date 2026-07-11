@@ -131,6 +131,10 @@ const nodeTypes = {
 
 type ToolMode = "select" | "add" | "connect" | "wall" | "walkway";
 
+/* Half-width of a wall endpoint's hit-box — bigger than the 12px visible
+   dot so there's a real margin to hover/grab from. */
+const HANDLE_HALF = 14;
+
 /* ── Wall geometry helper ────────────────────────── */
 function wallGeom(w: FactoryWall) {
   const dx    = w.end.x - w.start.x;
@@ -392,21 +396,25 @@ function FactoryCanvasInner({
           selectable: false, deletable: false, draggable: false,
         };
       }),
-    /* Endpoint handles — always on top */
+    /* Endpoint handles — always on top. The node's own hit-box is padded
+       well past the visible 12px dot (see HANDLE_HALF) so there's a real
+       margin around each endpoint where the dot reveals itself and the
+       cursor changes, instead of requiring the cursor to land exactly on
+       a tiny circle with no prior affordance. */
     ...walls.flatMap((w): Node[] => [
       {
         id: `wh-s-${w.id}`, type: "wallHandle",
-        position: { x: w.start.x - 6, y: w.start.y - 6 },
+        position: { x: w.start.x - HANDLE_HALF, y: w.start.y - HANDLE_HALF },
         data: { wallId: w.id, which: "start", neighbors: dirsAt(w.start) },
         selectable: false, deletable: false,
-        style: { width: 12, height: 12 },
+        style: { width: HANDLE_HALF * 2, height: HANDLE_HALF * 2 },
       },
       {
         id: `wh-e-${w.id}`, type: "wallHandle",
-        position: { x: w.end.x - 6, y: w.end.y - 6 },
+        position: { x: w.end.x - HANDLE_HALF, y: w.end.y - HANDLE_HALF },
         data: { wallId: w.id, which: "end", neighbors: dirsAt(w.end) },
         selectable: false, deletable: false,
-        style: { width: 12, height: 12 },
+        style: { width: HANDLE_HALF * 2, height: HANDLE_HALF * 2 },
       },
     ]),
   ];
@@ -707,7 +715,7 @@ function FactoryCanvasInner({
     const w = walls.find((x) => x.id === wallId);
     if (!w) return null;
     const snap = (v: number) => Math.round(v / 20) * 20;
-    const draggedPt = { x: snap(n.position.x + 6), y: snap(n.position.y + 6) };
+    const draggedPt = { x: snap(n.position.x + HANDLE_HALF), y: snap(n.position.y + HANDLE_HALF) };
     const origPt  = isStart ? w.start : w.end;
     const otherPt = isStart ? w.end   : w.start;
     const isHorizontal = w.start.y === w.end.y;
