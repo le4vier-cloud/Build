@@ -23,6 +23,7 @@ import "@xyflow/react/dist/style.css";
 
 import { useFactoryStore } from "@/stores/useFactoryStore";
 import { usePlanOverlayStore } from "@/stores/usePlanOverlayStore";
+import { ResizableDivider } from "@/components/ui/resizable-divider";
 import { FactoryZoneNode  } from "@/components/factory/FactoryZoneNode";
 import { FactoryWallNode  } from "@/components/factory/FactoryWallNode";
 import { WallHandleNode   } from "@/components/factory/WallHandleNode";
@@ -1107,7 +1108,7 @@ function ScrubInput({
 /* ══════════════════════════════════════════════════
    Properties Panel
 ══════════════════════════════════════════════════ */
-function PropertiesPanel({ t }: { t: Theme }) {
+function PropertiesPanel({ t, width }: { t: Theme; width: number }) {
   const { zones, nodes, walls, selectedNodeId, updateZone, removeZone, setSelectedNode, updateWall, removeWall } = useFactoryStore();
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId);
@@ -1115,7 +1116,7 @@ function PropertiesPanel({ t }: { t: Theme }) {
   const selectedWall = walls.find((w) => w.id === selectedNodeId);
 
   const panelStyle: React.CSSProperties = {
-    width: 240, minWidth: 240, height: "100%",
+    width, minWidth: width, height: "100%",
     backgroundColor: t.panelBg, borderLeft: `1px solid ${t.border}`,
     display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0,
   };
@@ -1267,13 +1268,13 @@ function Stat({ label, value, t }: { label: string; value: string; t: Theme }) {
 /* ══════════════════════════════════════════════════
    Plans Overlay Panel
 ══════════════════════════════════════════════════ */
-function PlansOverlayPanel({ t, onClose }: { t: Theme; onClose: () => void }) {
+function PlansOverlayPanel({ t, onClose, width }: { t: Theme; onClose: () => void; width: number }) {
   const { plans } = usePlanOverlayStore();
   const { planAttachments, removeAttachment } = useFactoryStore();
 
   return (
     <div style={{
-      width: 240, minWidth: 240, height: "100%",
+      width, minWidth: width, height: "100%",
       backgroundColor: t.panelBg, borderLeft: `1px solid ${t.border}`,
       display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0,
     }}>
@@ -1475,6 +1476,7 @@ export function FactoryFloorBuilder({
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [editMode,      setEditMode]      = useState(true);
   const [showPlans,     setShowPlans]     = useState(false);
+  const [panelWidth,    setPanelWidth]    = useState(240);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -1628,9 +1630,10 @@ export function FactoryFloorBuilder({
             />
           </ReactFlowProvider>
         </div>
+        <ResizableDivider onDrag={dx => setPanelWidth(w => Math.max(180, Math.min(420, w - dx)))} />
         {showPlans
-          ? <PlansOverlayPanel t={t} onClose={() => setShowPlans(false)} />
-          : <PropertiesPanel t={t} />
+          ? <PlansOverlayPanel t={t} onClose={() => setShowPlans(false)} width={panelWidth} />
+          : <PropertiesPanel t={t} width={panelWidth} />
         }
       </div>
 
