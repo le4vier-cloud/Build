@@ -58,8 +58,10 @@ export default function PlannerPage({ params }: { params: Promise<{ productId: s
   }, []);
 
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) containerRef.current?.requestFullscreen();
-    else document.exitFullscreen();
+    try {
+      if (!document.fullscreenElement) containerRef.current?.requestFullscreen()?.catch(() => {});
+      else document.exitFullscreen()?.catch(() => {});
+    } catch { /* Fullscreen API unavailable/blocked in this context */ }
   };
 
   const totalTime = tasks.reduce((s, t) => s + t.duration, 0);

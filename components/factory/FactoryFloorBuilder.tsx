@@ -326,9 +326,27 @@ function FactoryCanvasInner({
   ];
 
   /* ── Build ReactFlow edges (flow paths + overlay plan edges) ── */
+  /* Zone nodes have a source + target handle on all 4 sides — pick whichever
+     pair faces the other node so edges don't have to name a handle explicitly
+     (a node with multiple same-type handles requires one to be named, or
+     ReactFlow can't resolve which to attach to). */
+  const zoneCenter = (nodeId: string) => {
+    const n = storeNodes.find((x) => x.id === nodeId);
+    return n ? { x: n.position.x + n.width / 2, y: n.position.y + n.height / 2 } : null;
+  };
+  const pickHandles = (sourceId: string, targetId: string) => {
+    const s = zoneCenter(sourceId), tp = zoneCenter(targetId);
+    if (!s || !tp) return { sourceHandle: "r", targetHandle: "l" };
+    const dx = tp.x - s.x, dy = tp.y - s.y;
+    return Math.abs(dx) >= Math.abs(dy)
+      ? (dx >= 0 ? { sourceHandle: "r", targetHandle: "l" } : { sourceHandle: "l", targetHandle: "r" })
+      : (dy >= 0 ? { sourceHandle: "b", targetHandle: "t" } : { sourceHandle: "t", targetHandle: "b" });
+  };
+
   const buildRfEdges = (): Edge[] => {
     const baseEdges: Edge[] = storeEdges.map((e) => ({
       id: e.id, source: e.sourceId, target: e.targetId,
+      ...pickHandles(e.sourceId, e.targetId),
       label: e.label ?? e.pathType,
       animated: e.pathType === "conveyor" || e.pathType === "agv",
       style: { stroke: "#3B82F6", strokeWidth: 2 },
@@ -357,6 +375,7 @@ function FactoryCanvasInner({
             id:     `overlay-${plan.id}-${i}`,
             source: srcAtt.zoneNodeId,
             target: dstAtt.zoneNodeId,
+            ...pickHandles(srcAtt.zoneNodeId, dstAtt.zoneNodeId),
             label:  `${wf.name} → ${nextWf.name}`,
             style:  {
               stroke:          wf.color,
@@ -1382,7 +1401,7 @@ export function FactoryFloorBuilder({
   const [mousePos,      setMousePos]      = useState({ x: 0, y: 0 });
   const [isFullscreen,  setIsFullscreen]  = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
-  const [editMode,      setEditMode]      = useState(false);
+  const [editMode,      setEditMode]      = useState(true);
   const [showPlans,     setShowPlans]     = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -1399,8 +1418,10 @@ export function FactoryFloorBuilder({
   }, []);
 
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) containerRef.current?.requestFullscreen();
-    else document.exitFullscreen();
+    try {
+      if (!document.fullscreenElement) containerRef.current?.requestFullscreen()?.catch(() => {});
+      else document.exitFullscreen()?.catch(() => {});
+    } catch { /* Fullscreen API unavailable/blocked in this context */ }
   };
 
   const handleSelectType = (type: ZoneType) => {
@@ -1414,7 +1435,8 @@ export function FactoryFloorBuilder({
   const hBtnGhost: React.CSSProperties = {
     display: "flex", alignItems: "center", gap: 5, padding: "0 12px", height: 28,
     backgroundColor: t.btnGhostBg, color: t.textMuted,
-    border: `1px solid ${t.border}`, borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: "pointer",
+    borderWidth: 1, borderStyle: "solid", borderColor: t.border,
+    borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: "pointer",
   };
 
   const isWallMode = toolMode === "wall" || toolMode === "walkway";

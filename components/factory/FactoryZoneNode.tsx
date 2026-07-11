@@ -102,10 +102,16 @@ export function FactoryZoneNode({ id, data, selected }: NodeProps) {
       />
 
       {/* ── Connection handles ── */}
+      {/* Each side gets a source + target handle stacked at the same spot so
+          zones can be connected starting from, or ending on, any side. */}
       <Handle type="source" position={Position.Top}    id="t" style={handleStyle} />
       <Handle type="source" position={Position.Right}  id="r" style={handleStyle} />
       <Handle type="source" position={Position.Bottom} id="b" style={handleStyle} />
       <Handle type="source" position={Position.Left}   id="l" style={handleStyle} />
+      <Handle type="target" position={Position.Top}    id="t" style={handleStyle} />
+      <Handle type="target" position={Position.Right}  id="r" style={handleStyle} />
+      <Handle type="target" position={Position.Bottom} id="b" style={handleStyle} />
+      <Handle type="target" position={Position.Left}   id="l" style={handleStyle} />
 
       {/* ── Zone body ── */}
       <div

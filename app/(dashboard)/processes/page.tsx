@@ -574,8 +574,10 @@ function ProductionPlannerTab() {
   }, []);
 
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) editorRef.current?.requestFullscreen();
-    else document.exitFullscreen();
+    try {
+      if (!document.fullscreenElement) editorRef.current?.requestFullscreen()?.catch(() => {});
+      else document.exitFullscreen()?.catch(() => {});
+    } catch { /* Fullscreen API unavailable/blocked in this context */ }
   };
 
   useEffect(() => {
@@ -993,7 +995,69 @@ function ProductionPlannerTab() {
 /* ══════════════════════════════════════════════════
    Factory Tab — layout landing + editor
 ══════════════════════════════════════════════════ */
-const SEED_FACTORY_LAYOUTS: FactoryLayout[] = [];
+/*
+  Mock layout — exercises every builder feature at once:
+  - 4 zone types across the floor
+  - a perimeter + two full-span dividers, so the dividers meet the
+    perimeter as T-junctions and cross each other as a 4-way junction
+  - one walkway segment (distinct from wall) inside a zone
+  - a conveyor/manual/agv flow chain linking zones in build order
+  - two plan attachments tying real SEED_PLANS workflows to zones
+*/
+const MOCK_ZONES: FactoryZone[] = [
+  { id: "zone-rawmat",  name: "Raw Materials", type: "raw_materials", capacity: 40 },
+  { id: "zone-machine", name: "Machining",     type: "machining",     capacity: 12 },
+  { id: "zone-assembly",name: "Assembly",      type: "assembly",      capacity: 20 },
+  { id: "zone-qc",      name: "QC Station",    type: "station",       capacity: 6  },
+  { id: "zone-dispatch",name: "Dispatch",      type: "dispatch",      capacity: 10 },
+];
+
+const MOCK_NODES: FactoryZoneNode[] = [
+  { id: "fn-rawmat",   zoneId: "zone-rawmat",   position: { x: 40,  y: 40  }, width: 320, height: 140 },
+  { id: "fn-machine",  zoneId: "zone-machine",  position: { x: 420, y: 40  }, width: 320, height: 140 },
+  { id: "fn-assembly", zoneId: "zone-assembly", position: { x: 420, y: 230 }, width: 320, height: 140 },
+  { id: "fn-qc",       zoneId: "zone-qc",       position: { x: 40,  y: 230 }, width: 150, height: 140 },
+  { id: "fn-dispatch", zoneId: "zone-dispatch", position: { x: 210, y: 230 }, width: 150, height: 140 },
+];
+
+const MOCK_EDGES: FactoryFlowPath[] = [
+  { id: "fp-1", sourceId: "fn-rawmat",   targetId: "fn-machine",  pathType: "conveyor", label: "Feed"     },
+  { id: "fp-2", sourceId: "fn-machine",  targetId: "fn-assembly", pathType: "conveyor", label: "Machined" },
+  { id: "fp-3", sourceId: "fn-assembly", targetId: "fn-qc",       pathType: "manual",   label: "Inspect"  },
+  { id: "fp-4", sourceId: "fn-qc",       targetId: "fn-dispatch", pathType: "agv",      label: "Ship"     },
+];
+
+const MOCK_WALLS: FactoryWall[] = [
+  // Perimeter
+  { id: "wall-perim-top",    wallType: "wall", start: { x: 20,  y: 20  }, end: { x: 780, y: 20  }, thickness: 12 },
+  { id: "wall-perim-right",  wallType: "wall", start: { x: 780, y: 20  }, end: { x: 780, y: 400 }, thickness: 12 },
+  { id: "wall-perim-bottom", wallType: "wall", start: { x: 780, y: 400 }, end: { x: 20,  y: 400 }, thickness: 12 },
+  { id: "wall-perim-left",   wallType: "wall", start: { x: 20,  y: 400 }, end: { x: 20,  y: 20  }, thickness: 12 },
+  // Full-span dividers — vertical meets top/bottom as T-junctions, horizontal
+  // meets left/right as T-junctions, and the two cross each other at (400,210)
+  { id: "wall-div-vert",  wallType: "wall", start: { x: 400, y: 20  }, end: { x: 400, y: 400 }, thickness: 12 },
+  { id: "wall-div-horiz", wallType: "wall", start: { x: 20,  y: 210 }, end: { x: 780, y: 210 }, thickness: 12 },
+  // Internal walkway inside the Machining zone
+  { id: "walkway-machine", wallType: "walkway", start: { x: 440, y: 120 }, end: { x: 720, y: 120 }, thickness: 60 },
+];
+
+const MOCK_ATTACHMENTS: WorkflowAttachment[] = [
+  { planId: "plan1", workflowId: "w1", workflowName: "Core Build",   zoneNodeId: "fn-machine",  durationH: 2.75, color: "#F56300" },
+  { planId: "plan1", workflowId: "w2", workflowName: "Final Finish", zoneNodeId: "fn-assembly", durationH: 1.5,  color: "#2563EB" },
+];
+
+const SEED_FACTORY_LAYOUTS: FactoryLayout[] = [
+  {
+    id: "fl-mock-1",
+    name: "Ingane — Main Floor",
+    savedAt: new Date().toISOString().slice(0, 10),
+    zones: MOCK_ZONES,
+    nodes: MOCK_NODES,
+    edges: MOCK_EDGES,
+    walls: MOCK_WALLS,
+    planAttachments: MOCK_ATTACHMENTS,
+  },
+];
 
 function FactoryTab() {
   const isDark = useDarkMode();
