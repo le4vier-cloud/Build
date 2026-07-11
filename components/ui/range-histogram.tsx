@@ -29,6 +29,11 @@ export function RangeHistogram({ label, values, min, max, value, onChange, forma
   }, [values, min, span]);
 
   const pct = (v: number) => ((v - min) / span) * 100;
+  // Native range thumbs are inset by half their width so they never clip outside
+  // the input box; the CSS track must use the same inset or it visibly overshoots
+  // the thumbs at the extremes.
+  const THUMB = 12, HALF = THUMB / 2;
+  const trackPos = (p: number) => `calc((100% - ${THUMB}px) * ${p / 100} + ${HALF}px)`;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -39,7 +44,7 @@ export function RangeHistogram({ label, values, min, max, value, onChange, forma
 
       <div style={{ position: "relative", height: 38, marginTop: 2 }}>
         {/* Histogram bars */}
-        <div style={{ position: "absolute", left: 1, right: 1, bottom: 16, height: 20, display: "flex", alignItems: "flex-end", gap: 2, pointerEvents: "none" }}>
+        <div style={{ position: "absolute", left: HALF, right: HALF, bottom: 16, height: 20, display: "flex", alignItems: "flex-end", gap: 2, pointerEvents: "none" }}>
           {buckets.map((h, i) => {
             const bucketStart = min + (i / BUCKETS) * span;
             const bucketEnd = min + ((i + 1) / BUCKETS) * span;
@@ -61,11 +66,11 @@ export function RangeHistogram({ label, values, min, max, value, onChange, forma
         </div>
 
         {/* Track */}
-        <div style={{ position: "absolute", left: 1, right: 1, bottom: 7, height: 2, backgroundColor: "var(--border)", borderRadius: 1, pointerEvents: "none" }} />
+        <div style={{ position: "absolute", left: HALF, right: HALF, bottom: 7, height: 2, backgroundColor: "var(--border)", borderRadius: 1, pointerEvents: "none" }} />
         <div
           style={{
             position: "absolute", bottom: 7, height: 2, backgroundColor: "var(--accent)", borderRadius: 1,
-            left: `${pct(value[0])}%`, right: `${100 - pct(value[1])}%`, pointerEvents: "none",
+            left: trackPos(pct(value[0])), right: trackPos(100 - pct(value[1])), pointerEvents: "none",
           }}
         />
 
