@@ -20,6 +20,7 @@
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
+  --overlay-blur-bg: rgba(255, 255, 255, 0.75);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -36,6 +37,7 @@
     --btn-primary:      #F0F0F0;
     --btn-primary-text: #1A1A1A;
     --accent-light:     #2A1800;
+    --overlay-blur-bg:  rgba(20, 20, 22, 0.75);
   }
 }
 
@@ -52,6 +54,7 @@
   --btn-primary:      #F0F0F0;
   --btn-primary-text: #1A1A1A;
   --accent-light:     #2A1800;
+  --overlay-blur-bg:  rgba(20, 20, 22, 0.75);
 }
 
 :root[data-theme="light"] {
@@ -67,6 +70,7 @@
   --btn-primary:      #1D1D1F;
   --btn-primary-text: #FFFFFF;
   --accent-light:     #FFF0E6;
+  --overlay-blur-bg:  rgba(255, 255, 255, 0.75);
 }
 
 @theme inline {

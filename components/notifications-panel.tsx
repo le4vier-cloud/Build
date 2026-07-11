@@ -50,7 +50,7 @@ const blurStyle: React.CSSProperties = {
   bottom: -28,
   backdropFilter: "blur(30px) saturate(160%)",
   WebkitBackdropFilter: "blur(30px) saturate(160%)",
-  backgroundColor: "rgba(10, 10, 14, 0.66)",
+  backgroundColor: "var(--overlay-blur-bg)",
   borderRadius: 36,
   WebkitMaskImage: [
     "linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.6) 7%, black 18%, black 82%, rgba(0,0,0,0.6) 93%, transparent 100%)",
@@ -144,21 +144,21 @@ export function NotificationsPanel() {
 
             {/* Header */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px 10px", flexShrink: 0 }}>
-              <span style={{ fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: "var(--font-geist-pixel-square)", letterSpacing: "0.02em" }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", fontFamily: "var(--font-geist-pixel-square)", letterSpacing: "0.02em" }}>
                 Notifications
                 {unread > 0 && (
-                  <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, fontFamily: "inherit", backgroundColor: "#F56300", color: "#fff", borderRadius: 99, padding: "1px 7px" }}>
+                  <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, fontFamily: "inherit", backgroundColor: "var(--accent)", color: "#fff", borderRadius: 99, padding: "1px 7px" }}>
                     {unread}
                   </span>
                 )}
               </span>
               <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
                 {unread > 0 && (
-                  <button onClick={markAllRead} style={{ fontSize: 11, fontWeight: 600, color: "#F56300", background: "none", border: "none", cursor: "pointer", padding: "2px 6px", borderRadius: 4 }}>
+                  <button onClick={markAllRead} style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", padding: "2px 6px", borderRadius: 4 }}>
                     Mark all read
                   </button>
                 )}
-                <button onClick={() => setOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,0.4)", display: "flex", alignItems: "center", padding: 2 }}>
+                <button onClick={() => setOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-tertiary)", display: "flex", alignItems: "center", padding: 2 }}>
                   <X size={16} strokeWidth={2} />
                 </button>
               </div>
@@ -168,15 +168,15 @@ export function NotificationsPanel() {
             <div style={{ overflowY: "auto", flex: 1, padding: "4px 10px 10px", WebkitMaskImage: "linear-gradient(to bottom, transparent, black 20px, black calc(100% - 24px), transparent)", maskImage: "linear-gradient(to bottom, transparent, black 20px, black calc(100% - 24px), transparent)" }}>
               {items.length === 0 ? (
                 <div style={{ padding: 40, textAlign: "center" }}>
-                  <Check size={22} color="rgba(255,255,255,0.25)" style={{ margin: "0 auto 8px" }} />
-                  <p style={{ fontSize: 13, color: "rgba(255,255,255,0.3)", margin: 0 }}>All caught up</p>
+                  <Check size={22} color="var(--text-tertiary)" style={{ margin: "0 auto 8px" }} />
+                  <p style={{ fontSize: 13, color: "var(--text-tertiary)", margin: 0 }}>All caught up</p>
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {items.map(notif => {
                     const hovered  = hoveredId === notif.id;
                     const optOpen  = optionsId === notif.id;
-                    const overlayBg = notif.read ? "rgba(18,18,22,0.96)" : "rgba(28,18,10,0.96)";
+                    const cardBg   = notif.read ? "var(--surface)" : "var(--accent-light)";
 
                     return (
                       <div
@@ -185,7 +185,7 @@ export function NotificationsPanel() {
                         onMouseEnter={() => setHoveredId(notif.id)}
                         onMouseLeave={() => { setHoveredId(null); if (!optOpen) setOptionsId(null); }}
                       >
-                        {/* Fixed-height card */}
+                        {/* Fixed-height card — solid background, no transparency */}
                         <div
                           onClick={() => navigate(notif.href)}
                           style={{
@@ -193,45 +193,45 @@ export function NotificationsPanel() {
                             padding: "12px 14px", height: 72,
                             boxSizing: "border-box", overflow: "hidden",
                             borderRadius: 12, cursor: "pointer", position: "relative",
-                            backgroundColor: notif.read ? "rgba(255,255,255,0.05)" : "rgba(245,99,0,0.09)",
-                            border: `1px solid ${notif.read ? "rgba(255,255,255,0.07)" : "rgba(245,99,0,0.2)"}`,
+                            backgroundColor: cardBg,
+                            border: `1px solid ${notif.read ? "var(--border)" : "rgba(245,99,0,0.3)"}`,
                           }}
                         >
                           {!notif.read && (
-                            <span style={{ position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)", width: 3, height: 28, borderRadius: "0 2px 2px 0", backgroundColor: "#F56300" }} />
+                            <span style={{ position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)", width: 3, height: 28, borderRadius: "0 2px 2px 0", backgroundColor: "var(--accent)" }} />
                           )}
-                          <div style={{ width: 34, height: 34, borderRadius: 9, backgroundColor: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: ICON_COLOR[notif.type] }}>
+                          <div style={{ width: 34, height: 34, borderRadius: 9, backgroundColor: "var(--bg)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: ICON_COLOR[notif.type] }}>
                             {ICONS[notif.type]}
                           </div>
                           <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 3 }}>
-                              <span style={{ fontSize: 12, fontWeight: 600, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{notif.title}</span>
-                              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", whiteSpace: "nowrap", marginLeft: 8, flexShrink: 0 }}>{notif.time}</span>
+                              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{notif.title}</span>
+                              <span style={{ fontSize: 10, color: "var(--text-tertiary)", whiteSpace: "nowrap", marginLeft: 8, flexShrink: 0 }}>{notif.time}</span>
                             </div>
-                            <p style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", margin: 0, lineHeight: 1.4, overflow: "hidden" }}>{notif.body}</p>
+                            <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0, lineHeight: 1.4, overflow: "hidden" }}>{notif.body}</p>
                           </div>
                         </div>
 
                         {/* Hover overlay — zero layout impact */}
                         {hovered && (
-                          <div style={{ position: "absolute", top: 1, right: 1, bottom: 1, display: "flex", alignItems: "center", gap: 5, paddingRight: 8, borderRadius: "0 11px 11px 0", background: `linear-gradient(to right, transparent, ${overlayBg} 36%)`, zIndex: 5 }}>
+                          <div style={{ position: "absolute", top: 1, right: 1, bottom: 1, display: "flex", alignItems: "center", gap: 5, paddingRight: 8, borderRadius: "0 11px 11px 0", background: `linear-gradient(to right, transparent, ${cardBg} 36%)`, zIndex: 5 }}>
                             <div style={{ position: "relative" }}>
                               <button
                                 onClick={e => { e.stopPropagation(); setOptionsId(optOpen ? null : notif.id); }}
-                                style={{ height: 26, padding: "0 8px", display: "flex", alignItems: "center", gap: 3, backgroundColor: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 7, fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.8)", cursor: "pointer" }}
+                                style={{ height: 26, padding: "0 8px", display: "flex", alignItems: "center", gap: 3, backgroundColor: "var(--bg)", border: "1px solid var(--border)", borderRadius: 7, fontSize: 11, fontWeight: 600, color: "var(--text-primary)", cursor: "pointer" }}
                               >
                                 Options <ChevronDown size={10} strokeWidth={2.5} />
                               </button>
                               {optOpen && (
                                 <div
                                   onClick={e => e.stopPropagation()}
-                                  style={{ position: "absolute", right: 0, top: "calc(100% + 5px)", backgroundColor: "rgba(26,26,30,0.98)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.09)", borderRadius: 11, boxShadow: "0 8px 32px rgba(0,0,0,0.4)", overflow: "hidden", zIndex: 20, minWidth: 154 }}
+                                  style={{ position: "absolute", right: 0, top: "calc(100% + 5px)", backgroundColor: "var(--surface)", border: "1px solid var(--border)", borderRadius: 11, boxShadow: "0 8px 32px rgba(0,0,0,0.24)", overflow: "hidden", zIndex: 20, minWidth: 154 }}
                                 >
                                   {OPTIONS.map((opt, i) => (
                                     <button
                                       key={opt}
                                       onClick={() => handleOption(notif.id, opt)}
-                                      style={{ display: "block", width: "100%", padding: "9px 14px", textAlign: "left", background: "none", border: "none", borderBottom: i < OPTIONS.length - 1 ? "1px solid rgba(255,255,255,0.06)" : "none", fontSize: 13, fontWeight: opt === "Delete" ? 600 : 400, color: opt === "Delete" ? "#FF453A" : "rgba(255,255,255,0.82)", cursor: "pointer" }}
+                                      style={{ display: "block", width: "100%", padding: "9px 14px", textAlign: "left", background: "none", border: "none", borderBottom: i < OPTIONS.length - 1 ? "1px solid var(--border)" : "none", fontSize: 13, fontWeight: opt === "Delete" ? 600 : 400, color: opt === "Delete" ? "var(--danger)" : "var(--text-primary)", cursor: "pointer" }}
                                     >
                                       {opt}
                                     </button>
@@ -241,7 +241,7 @@ export function NotificationsPanel() {
                             </div>
                             <button
                               onClick={e => dismiss(notif.id, e)}
-                              style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 7, cursor: "pointer", color: "rgba(255,255,255,0.6)" }}
+                              style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "var(--bg)", border: "1px solid var(--border)", borderRadius: 7, cursor: "pointer", color: "var(--text-secondary)" }}
                             >
                               <X size={11} strokeWidth={2.5} />
                             </button>
