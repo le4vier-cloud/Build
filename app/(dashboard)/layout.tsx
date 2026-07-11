@@ -33,8 +33,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Sidebar wrapper — animates width to push content */}
         <div
           style={{
-            width: visible ? 72 : 0,
-            minWidth: visible ? 72 : 0,
+            width: visible ? 88 : 0,
+            minWidth: visible ? 88 : 0,
             overflow: "hidden",
             flexShrink: 0,
             transition:
