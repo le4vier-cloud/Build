@@ -49,7 +49,10 @@ interface FactoryStore {
   addWall:        (wall: Omit<FactoryWall, "id">) => void;
   updateWall:     (id: string, updates: Partial<Omit<FactoryWall, "id">>) => void;
   removeWall:     (id: string) => void;
-  batchMoveWalls: (moves: Array<{ id: string; dx: number; dy: number }>) => void;
+  /* Mixed per-wall patches (e.g. a dragged wall's full translate alongside
+     a single moved endpoint on a wall connected to it) applied as one
+     history step, so a joint stays connected through a drag + one undo. */
+  batchPatchWalls: (patches: Array<{ id: string } & Partial<Omit<FactoryWall, "id">>>) => void;
 
   /* ── Flow path actions ── */
   addFlowPath:   (path: Omit<FactoryFlowPath, "id">) => void;
@@ -210,17 +213,12 @@ export const useFactoryStore = create<FactoryStore>((set, get) => {
       }));
     },
 
-    batchMoveWalls: (moves) => {
+    batchPatchWalls: (patches) => {
       pushHistory();
       set((s) => ({
         walls: s.walls.map((w) => {
-          const m = moves.find((mv) => mv.id === w.id);
-          if (!m) return w;
-          return {
-            ...w,
-            start: { x: w.start.x + m.dx, y: w.start.y + m.dy },
-            end:   { x: w.end.x   + m.dx, y: w.end.y   + m.dy },
-          };
+          const p = patches.find((pt) => pt.id === w.id);
+          return p ? { ...w, ...p } : w;
         }),
       }));
     },

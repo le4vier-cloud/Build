@@ -261,7 +261,7 @@ function FactoryCanvasInner({
 
   const {
     zones, nodes: storeNodes, edges: storeEdges, walls, planAttachments,
-    addZone, removeZone, batchMoveNodes, batchMoveWalls, setSelectedNode, addFlowPath,
+    addZone, removeZone, batchMoveNodes, batchPatchWalls, setSelectedNode, addFlowPath,
     addWall, removeWall, updateWall, setIsBranchDragging,
   } = useFactoryStore();
 
@@ -754,8 +754,12 @@ function FactoryCanvasInner({
   /* ── Drag stop — handles handle nodes, wall bodies, zone nodes separately ── */
   const onNodeDragStop = useCallback(
     (_e: unknown, _node: Node, draggedNodes: Node[]) => {
-      const zoneMoves:      Array<{ id: string; position: { x: number; y: number } }> = [];
-      const wallBodyDeltas: Array<{ id: string; dx: number; dy: number }> = [];
+      const zoneMoves: Array<{ id: string; position: { x: number; y: number } }> = [];
+      const wallPatchMap = new Map<string, Partial<Omit<FactoryWall, "id">>>();
+      const addPatch = (id: string, patch: Partial<Omit<FactoryWall, "id">>) =>
+        wallPatchMap.set(id, { ...(wallPatchMap.get(id) ?? {}), ...patch });
+      const pointsEqual = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+        Math.round(a.x) === Math.round(b.x) && Math.round(a.y) === Math.round(b.y);
 
       draggedNodes.forEach((n) => {
         if (n.id.startsWith("wh-s-") || n.id.startsWith("wh-e-")) {
@@ -766,14 +770,30 @@ function FactoryCanvasInner({
         } else {
           const w = walls.find((x) => x.id === n.id);
           if (w) {
-            /* Wall body drag → translate both endpoints */
+            /* Wall body drag → translate both endpoints, and carry along
+               any OTHER wall whose endpoint was touching this one (at a
+               shared corner, or T-ing into its side) so the joint stays
+               connected instead of tearing apart. */
             const { aabbW, aabbH, mid } = wallGeom(w);
             const newMidX = n.position.x + aabbW / 2;
             const newMidY = n.position.y + aabbH / 2;
             const snap    = (v: number) => Math.round(v / 20) * 20;
             const dx = snap(newMidX - mid.x);
             const dy = snap(newMidY - mid.y);
-            if (dx !== 0 || dy !== 0) wallBodyDeltas.push({ id: w.id, dx, dy });
+            if (dx !== 0 || dy !== 0) {
+              const oldStart = w.start, oldEnd = w.end;
+              addPatch(w.id, {
+                start: { x: oldStart.x + dx, y: oldStart.y + dy },
+                end:   { x: oldEnd.x   + dx, y: oldEnd.y   + dy },
+              });
+              walls.forEach((x) => {
+                if (x.id === w.id) return;
+                const startTouches = pointsEqual(x.start, oldStart) || pointsEqual(x.start, oldEnd) || onWallBody(w, x.start);
+                const endTouches   = pointsEqual(x.end,   oldStart) || pointsEqual(x.end,   oldEnd) || onWallBody(w, x.end);
+                if (startTouches) addPatch(x.id, { start: { x: x.start.x + dx, y: x.start.y + dy } });
+                if (endTouches)   addPatch(x.id, { end:   { x: x.end.x   + dx, y: x.end.y   + dy } });
+              });
+            }
           } else {
             /* Zone node */
             zoneMoves.push({
@@ -787,12 +807,14 @@ function FactoryCanvasInner({
         }
       });
 
-      if (zoneMoves.length      > 0) batchMoveNodes(zoneMoves);
-      if (wallBodyDeltas.length > 0) batchMoveWalls(wallBodyDeltas);
+      if (zoneMoves.length > 0) batchMoveNodes(zoneMoves);
+      if (wallPatchMap.size > 0) {
+        batchPatchWalls([...wallPatchMap.entries()].map(([id, patch]) => ({ id, ...patch })));
+      }
       setDragPreview(null);
       setIsBranchDragging(false);
     },
-    [batchMoveNodes, batchMoveWalls, walls, updateWall, addWall, computeHandleDragResult, setIsBranchDragging],
+    [batchMoveNodes, batchPatchWalls, walls, updateWall, addWall, computeHandleDragResult, setIsBranchDragging],
   );
 
   const onNodeClick = useCallback(
