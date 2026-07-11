@@ -134,7 +134,7 @@ export function NotificationsPanel() {
 
       {/* Panel — soft blur, no hard edge */}
       {open && (
-        <div style={{ position: "fixed", top: 58, right: 16, width: 360, maxHeight: "calc(100vh - 80px)", zIndex: 200, display: "flex", flexDirection: "column" }}>
+        <div style={{ position: "fixed", top: 58, right: 16, width: "min(360px, calc(100vw - 32px))", maxHeight: "calc(100vh - 80px)", zIndex: 200, display: "flex", flexDirection: "column" }}>
 
           {/* Blur backdrop — extracted to const to avoid inline type cast issues */}
           <div style={blurStyle} />

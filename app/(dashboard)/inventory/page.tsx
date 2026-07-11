@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertCircle, Plus, X, Trash2 } from "lucide-react";
+import { AlertCircle, Plus, X, Trash2, Package, Share2, Copy, Check, FileText, Upload } from "lucide-react";
 import { ModuleLayout } from "@/components/ui/module-layout";
 import { useSelection } from "@/hooks/useSelection";
 import { SelectCheckbox } from "@/components/ui/select-checkbox";
@@ -16,6 +16,15 @@ type ActiveForm = "os" | "im" | null;
 
 interface SubComponent { id: string; name: string; qty: number }
 
+interface BuildPackStep { id: string; name: string; instructions: string }
+interface BuildPackFile { id: string; name: string; sizeKb: number }
+interface BuildPack {
+  steps:  BuildPackStep[];
+  files:  BuildPackFile[];
+  shared: boolean;
+  notes:  string;
+}
+
 interface Part {
   id: string;
   name: string;
@@ -28,6 +37,7 @@ interface Part {
   reorder: boolean;
   cost: number;
   sale: number;
+  buildPack?: BuildPack;
 }
 
 const MOCK_INVENTORY: Part[] = [
@@ -45,6 +55,7 @@ export default function InventoryPage() {
   const [activeForm, setActiveForm] = useState<ActiveForm>(null);
   const [editingPart, setEditingPart] = useState<Part | null>(null);
   const [hoveredId,  setHoveredId]  = useState<string | null>(null);
+  const [buildPackPartId, setBuildPackPartId] = useState<string | null>(null);
 
   const [qtyRange,  setQtyRange]  = useState<[number, number]>([0, 999]);
   const [costRange, setCostRange] = useState<[number, number]>([0, 9999]);
@@ -100,6 +111,12 @@ export default function InventoryPage() {
     const part = items.find(p => sel.isSelected(p.id));
     if (part) openEdit(part);
   }
+
+  function saveBuildPack(partId: string, buildPack: BuildPack) {
+    setItems(prev => prev.map(p => p.id === partId ? { ...p, buildPack } : p));
+  }
+
+  const buildPackPart = buildPackPartId ? items.find(p => p.id === buildPackPartId) ?? null : null;
 
   const allVisibleSelected = filtered.length > 0 && filtered.every(p => sel.isSelected(p.id));
 
@@ -162,7 +179,7 @@ export default function InventoryPage() {
                 {["#", "Part Name", "Barcode", "Serial Number", "Amount In Stock", "Minimum Threshold", "Stock Item Type", "Supplier", "Re-Order Alert", "Cost Price", "Sale Price"].map((h) => (
                   <th key={h} style={s.th}>{h}</th>
                 ))}
-                <th style={{ ...s.th, width: 76 }} />
+                <th style={{ ...s.th, width: 108 }} />
               </tr>
             </thead>
             <tbody>
@@ -196,7 +213,28 @@ export default function InventoryPage() {
                     <td style={s.td}>R{item.cost.toFixed(2)}</td>
                     <td style={s.td}>R{item.sale.toFixed(2)}</td>
                     <td style={s.td}>
-                      <RowActions visible={hovered} onEdit={() => openEdit(item)} onDelete={() => deleteOne(item.id)} />
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        {item.type === "Out Sourced" && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setBuildPackPartId(item.id); }}
+                            title={item.buildPack?.steps.length ? "Edit Supplier Build Pack" : "Add Supplier Build Pack"}
+                            style={{
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              width: 26, height: 26, borderRadius: 6, flexShrink: 0,
+                              border: `1px solid ${item.buildPack?.steps.length ? "var(--accent)" : "var(--border)"}`,
+                              backgroundColor: item.buildPack?.steps.length ? "rgba(245,99,0,0.1)" : "var(--surface)",
+                              color: item.buildPack?.steps.length ? "var(--accent)" : "var(--text-secondary)",
+                              cursor: "pointer",
+                              opacity: hovered || item.buildPack?.steps.length ? 1 : 0,
+                              transition: "opacity 0.12s",
+                            }}
+                          >
+                            <Package size={13} strokeWidth={1.8} />
+                          </button>
+                        )}
+                        <RowActions visible={hovered} onEdit={() => openEdit(item)} onDelete={() => deleteOne(item.id)} />
+                      </div>
                     </td>
                   </tr>
                 );
@@ -209,6 +247,15 @@ export default function InventoryPage() {
       {activeForm && <div style={f.backdrop} onClick={closeForm} />}
       {activeForm === "os" && <AddOSPartForm initial={editingPart} onClose={closeForm} onSave={handleSavePart} />}
       {activeForm === "im" && <AddIMPartForm initial={editingPart} onClose={closeForm} onSave={handleSavePart} />}
+
+      {buildPackPart && <div style={f.backdrop} onClick={() => setBuildPackPartId(null)} />}
+      {buildPackPart && (
+        <BuildPackPanel
+          part={buildPackPart}
+          onClose={() => setBuildPackPartId(null)}
+          onSave={(bp) => saveBuildPack(buildPackPart.id, bp)}
+        />
+      )}
 
       {!activeForm && (
         <BulkActionBar
@@ -433,6 +480,138 @@ function AddIMPartForm({ initial, onClose, onSave }: { initial: Part | null; onC
   );
 }
 
+/* ── Supplier Build Pack panel ──────────────────────────────────── */
+function BuildPackPanel({ part, onClose, onSave }: {
+  part: Part;
+  onClose: () => void;
+  onSave: (bp: BuildPack) => void;
+}) {
+  const initial = part.buildPack;
+  const [steps,  setSteps]  = useState<BuildPackStep[]>(initial?.steps ?? []);
+  const [files,  setFiles]  = useState<BuildPackFile[]>(initial?.files ?? []);
+  const [shared, setShared] = useState(initial?.shared ?? false);
+  const [notes,  setNotes]  = useState(initial?.notes ?? "");
+  const [stepName, setStepName] = useState("");
+  const [stepInst, setStepInst] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  function addStep() {
+    if (!stepName.trim()) return;
+    setSteps(prev => [...prev, { id: crypto.randomUUID(), name: stepName.trim(), instructions: stepInst.trim() }]);
+    setStepName("");
+    setStepInst("");
+  }
+
+  function onPickFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(e.target.files ?? []);
+    if (picked.length === 0) return;
+    setFiles(prev => [...prev, ...picked.map(f => ({ id: crypto.randomUUID(), name: f.name, sizeKb: Math.round(f.size / 1024) }))]);
+    e.target.value = "";
+  }
+
+  function copyLink() {
+    const link = `https://build.app/supplier/${part.id}`;
+    navigator.clipboard?.writeText(link).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  function handleSave() {
+    onSave({ steps, files, shared, notes });
+    onClose();
+  }
+
+  return (
+    <div style={{ ...f.panel, width: "min(440px, 100vw)" }}>
+      <div style={f.header}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <span style={f.headerTitle}>Supplier Build Pack</span>
+          <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{part.name}</span>
+        </div>
+        <button onClick={onClose} style={f.closeBtn}><X size={16} /></button>
+      </div>
+      <div style={f.body}>
+        <div style={f.sectionLabel}>SOP Steps</div>
+        {steps.length === 0 && (
+          <p style={{ fontSize: 12, color: "var(--text-tertiary)", fontStyle: "italic", marginTop: 0 }}>No steps yet — add the build sequence below.</p>
+        )}
+        {steps.map((step, i) => (
+          <div key={step.id} style={bp.stepRow}>
+            <span style={bp.stepIndex}>{i + 1}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{step.name}</div>
+              {step.instructions && <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2, lineHeight: 1.5 }}>{step.instructions}</div>}
+            </div>
+            <button onClick={() => setSteps(prev => prev.filter(x => x.id !== step.id))} style={f.removeBtn}>
+              <Trash2 size={12} />
+            </button>
+          </div>
+        ))}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px", backgroundColor: "var(--bg)", border: "1px dashed var(--border)", borderRadius: "var(--radius-sm)", marginBottom: 20 }}>
+          <input
+            value={stepName}
+            onChange={e => setStepName(e.target.value)}
+            style={f.inp}
+            placeholder="Step name — e.g. Cut & prep materials"
+          />
+          <textarea
+            value={stepInst}
+            onChange={e => setStepInst(e.target.value)}
+            style={{ ...f.inp, height: 56, resize: "vertical" as const }}
+            placeholder="Instructions (optional)"
+          />
+          <button onClick={addStep} style={{ ...f.addCompBtn, width: "100%", borderRadius: "var(--radius-sm)" }}>
+            <Plus size={14} /> Add Step
+          </button>
+        </div>
+
+        <div style={f.sectionLabel}>Files & Drawings</div>
+        {files.length === 0 && (
+          <p style={{ fontSize: 12, color: "var(--text-tertiary)", fontStyle: "italic", marginTop: 0 }}>No files attached.</p>
+        )}
+        {files.map(file => (
+          <div key={file.id} style={f.compRow}>
+            <FileText size={13} color="var(--text-tertiary)" style={{ flexShrink: 0 }} />
+            <span style={f.compName}>{file.name}</span>
+            <span style={f.compQty}>{file.sizeKb}kb</span>
+            <button onClick={() => setFiles(prev => prev.filter(x => x.id !== file.id))} style={f.removeBtn}>
+              <Trash2 size={12} />
+            </button>
+          </div>
+        ))}
+        <label style={{ ...bp.uploadBtn, marginBottom: 20 }}>
+          <Upload size={14} /> Upload Files
+          <input type="file" multiple onChange={onPickFiles} style={{ display: "none" }} />
+        </label>
+
+        <div style={f.sectionLabel}>Supplier Access</div>
+        <div style={f.toggleRow}>
+          <span style={f.lbl}>Share with {part.supplier || "supplier"}</span>
+          <Toggle on={shared} onChange={setShared} />
+        </div>
+        {shared && (
+          <div style={bp.shareBox}>
+            <Share2 size={13} color="var(--accent)" style={{ flexShrink: 0 }} />
+            <span style={bp.shareLink}>{`build.app/supplier/${part.id}`}</span>
+            <button onClick={copyLink} style={bp.copyBtn} title="Copy link">
+              {copied ? <Check size={13} color="var(--success)" /> : <Copy size={13} />}
+            </button>
+          </div>
+        )}
+        <Field label="Notes for Supplier">
+          <textarea value={notes} onChange={e => setNotes(e.target.value)}
+            style={{ ...f.inp, height: 64, resize: "vertical" as const }}
+            placeholder="Tolerances, packaging, delivery instructions..." />
+        </Field>
+      </div>
+      <div style={f.footer}>
+        <button onClick={onClose} style={f.cancelBtn}>Cancel</button>
+        <button onClick={handleSave} style={f.saveBtn}>Save Build Pack</button>
+      </div>
+    </div>
+  );
+}
+
 /* ── Shared primitives ──────────────────────────────────────────── */
 function Field({ label, children, flex }: { label: string; children: React.ReactNode; flex?: boolean }) {
   return (
@@ -488,7 +667,7 @@ const s: Record<string, React.CSSProperties> = {
 /* ── Drawer / form styles ───────────────────────────────────────── */
 const f: Record<string, React.CSSProperties> = {
   backdrop:      { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.35)", zIndex: 100 },
-  panel:         { position: "fixed", top: 0, right: 0, bottom: 0, width: 380, backgroundColor: "var(--surface)", borderLeft: "1px solid var(--border)", boxShadow: "-4px 0 24px rgba(0,0,0,0.15)", zIndex: 101, display: "flex", flexDirection: "column" },
+  panel:         { position: "fixed", top: 0, right: 0, bottom: 0, width: "min(380px, 100vw)", backgroundColor: "var(--surface)", borderLeft: "1px solid var(--border)", boxShadow: "-4px 0 24px rgba(0,0,0,0.15)", zIndex: 101, display: "flex", flexDirection: "column" },
   header:        { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: "1px solid var(--border)", flexShrink: 0 },
   headerTitle:   { fontSize: 15, fontWeight: 700, color: "var(--text-primary)" },
   closeBtn:      { background: "none", border: "none", cursor: "pointer", color: "var(--text-secondary)", display: "flex", alignItems: "center", padding: 4 },
@@ -511,4 +690,14 @@ const f: Record<string, React.CSSProperties> = {
   addCompBtn:    { height: 34, width: 34, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "var(--accent)", color: "#fff", border: "none", borderRadius: "var(--radius-sm)", cursor: "pointer", flexShrink: 0 },
   cancelBtn:     { flex: 1, height: 36, border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "none", cursor: "pointer", fontSize: 13, color: "var(--text-secondary)" },
   saveBtn:       { flex: 2, height: 36, backgroundColor: "var(--btn-primary)", color: "var(--btn-primary-text, #fff)", border: "none", borderRadius: "var(--radius-sm)", fontSize: 13, fontWeight: 600, cursor: "pointer" },
+};
+
+/* ── Build Pack panel styles ────────────────────────────────────── */
+const bp: Record<string, React.CSSProperties> = {
+  stepRow:    { display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 10px", backgroundColor: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", marginBottom: 6 },
+  stepIndex:  { fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)", width: 16, flexShrink: 0, textAlign: "center", marginTop: 1 },
+  uploadBtn:  { display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%", padding: "9px", borderRadius: "var(--radius-sm)", border: "1.5px dashed var(--border)", backgroundColor: "transparent", color: "var(--text-secondary)", fontSize: 13, fontWeight: 500, cursor: "pointer" },
+  shareBox:   { display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", backgroundColor: "rgba(245,99,0,0.08)", border: "1px solid rgba(245,99,0,0.25)", borderRadius: "var(--radius-sm)", marginTop: 10, marginBottom: 20 },
+  shareLink:  { flex: 1, minWidth: 0, fontSize: 12, color: "var(--text-primary)", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  copyBtn:    { display: "flex", alignItems: "center", justifyContent: "center", width: 26, height: 26, borderRadius: 6, border: "1px solid var(--border)", backgroundColor: "var(--surface)", color: "var(--text-secondary)", cursor: "pointer", flexShrink: 0 },
 };

@@ -297,7 +297,7 @@ function SlidePanel({ panel, parts, onClose, onSave }: {
     <>
       <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 49, pointerEvents: isOpen ? "auto" : "none" }} />
       <div style={{
-        position: "fixed", top: 0, right: 0, height: "100vh", width: 400, zIndex: 50,
+        position: "fixed", top: 0, right: 0, height: "100vh", width: "min(400px, 100vw)", zIndex: 50,
         backgroundColor: "var(--bg)", borderLeft: "1px solid var(--border)",
         boxShadow: isOpen ? "-8px 0 32px rgba(0,0,0,0.1)" : "none",
         transform: `translateX(${isOpen ? 0 : 400}px)`,

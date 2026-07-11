@@ -80,10 +80,26 @@ export function useDarkMode() {
   const [dark, setDark] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    setDark(mq.matches);
-    const h = (e: MediaQueryListEvent) => setDark(e.matches);
-    mq.addEventListener("change", h);
-    return () => mq.removeEventListener("change", h);
+
+    function compute() {
+      const override = document.documentElement.getAttribute("data-theme");
+      if (override === "light") return false;
+      if (override === "dark") return true;
+      return mq.matches;
+    }
+
+    setDark(compute());
+
+    const onMqChange = () => setDark(compute());
+    mq.addEventListener("change", onMqChange);
+
+    const observer = new MutationObserver(() => setDark(compute()));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+    return () => {
+      mq.removeEventListener("change", onMqChange);
+      observer.disconnect();
+    };
   }, []);
   return dark;
 }
@@ -579,14 +595,37 @@ function FactoryCanvasInner({
 
       draggedNodes.forEach((n) => {
         if (n.id.startsWith("wh-s-") || n.id.startsWith("wh-e-")) {
-          /* Handle node drag → update single endpoint */
+          /* Handle node drag → either reposition this endpoint (drag along the
+             wall's own axis) or branch off a new perpendicular segment (drag
+             sideways), so T-shapes and cross-shapes can be built from any end. */
           const isStart = n.id.startsWith("wh-s-");
           const wallId  = n.id.slice(5);
           const w = walls.find((x) => x.id === wallId);
           if (!w) return;
           const snap = (v: number) => Math.round(v / 20) * 20;
-          const newPt = { x: snap(n.position.x + 6), y: snap(n.position.y + 6) };
-          updateWall(wallId, isStart ? { start: newPt } : { end: newPt });
+          const draggedPt = { x: snap(n.position.x + 6), y: snap(n.position.y + 6) };
+          const origPt  = isStart ? w.start : w.end;
+          const otherPt = isStart ? w.end   : w.start;
+          const isHorizontal = w.start.y === w.end.y;
+
+          const alongDelta = isHorizontal ? draggedPt.x - origPt.x : draggedPt.y - origPt.y;
+          const perpDelta  = isHorizontal ? draggedPt.y - origPt.y : draggedPt.x - origPt.x;
+
+          if (Math.abs(perpDelta) >= 20 && Math.abs(perpDelta) > Math.abs(alongDelta)) {
+            /* Branch: spawn a new perpendicular wall from the original,
+               unmoved endpoint — the dragged endpoint snaps back in place. */
+            const branchEnd = isHorizontal
+              ? { x: origPt.x, y: draggedPt.y }
+              : { x: draggedPt.x, y: origPt.y };
+            addWall({ wallType: w.wallType, start: { ...origPt }, end: branchEnd, thickness: w.thickness });
+          } else {
+            /* Reposition: keep the wall perfectly axis-aligned by locking
+               the perpendicular coordinate to the other endpoint's. */
+            const newPt = isHorizontal
+              ? { x: draggedPt.x, y: otherPt.y }
+              : { x: otherPt.x, y: draggedPt.y };
+            updateWall(wallId, isStart ? { start: newPt } : { end: newPt });
+          }
         } else {
           const w = walls.find((x) => x.id === n.id);
           if (w) {
@@ -614,7 +653,7 @@ function FactoryCanvasInner({
       if (zoneMoves.length      > 0) batchMoveNodes(zoneMoves);
       if (wallBodyDeltas.length > 0) batchMoveWalls(wallBodyDeltas);
     },
-    [batchMoveNodes, batchMoveWalls, walls, updateWall],
+    [batchMoveNodes, batchMoveWalls, walls, updateWall, addWall],
   );
 
   const onNodeClick = useCallback(
@@ -866,7 +905,7 @@ function FactoryCanvasInner({
 function AddZoneDialog({ onClose, onSelectType, t }: { onClose: () => void; onSelectType: (type: ZoneType) => void; t: Theme }) {
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: t.overlayBg, backdropFilter: "blur(4px)" }} onClick={onClose}>
-      <div style={{ width: 440, backgroundColor: t.panelBg, border: `1px solid ${t.border}`, borderRadius: 16, boxShadow: "0 24px 80px rgba(0,0,0,0.3)", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ width: "min(440px, calc(100vw - 32px))", backgroundColor: t.panelBg, border: `1px solid ${t.border}`, borderRadius: 16, boxShadow: "0 24px 80px rgba(0,0,0,0.3)", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: `1px solid ${t.border}` }}>
           <div>
             <h2 style={{ fontSize: 15, fontWeight: 700, color: t.textPrimary }}>Add Zone</h2>
@@ -1032,7 +1071,7 @@ function PropertiesPanel({ t }: { t: Theme }) {
             <Stat label="T"      value={`${selectedWall.thickness}u`} t={t} />
           </div>
           <p style={{ fontSize: 10, color: t.textDim, lineHeight: 1.6 }}>
-            Drag green endpoint handles to reposition and rotate.<br />
+            Drag a green handle along the wall to reposition it, or sideways to branch off a new segment — build T-shapes and cross-shapes.<br />
             Scrub or click thickness above.
           </p>
           <button onClick={() => removeWall(selectedWall.id)} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px", height: 34, backgroundColor: "transparent", border: "1px solid #FF3B3030", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#FF3B30", marginTop: 4 }}>

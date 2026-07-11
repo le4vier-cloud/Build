@@ -504,7 +504,7 @@ function RolesModal({ onClose }: { onClose: () => void }) {
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div style={{
-        width: 560, maxHeight: "82vh",
+        width: "min(560px, calc(100vw - 32px))", maxHeight: "82vh",
         backgroundColor: "var(--bg)", borderRadius: 14,
         border: "1px solid var(--border)",
         display: "flex", flexDirection: "column",
@@ -702,7 +702,10 @@ function StaffList({
         </div>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div
+        style={{ display: "flex", flexDirection: "column", gap: 6 }}
+        onClick={(e) => { if (e.target === e.currentTarget) sel.clear(); }}
+      >
         {staff.map((staff) => {
           const creds    = credsByStaff(staff.id);
           const expanded = expandedId === staff.id;

@@ -43,7 +43,7 @@ export const AddStationDialog = ({ open, onOpenChange }: AddStationDialogProps) 
     >
       <div
         style={{
-          width: 400,
+          width: "min(400px, calc(100vw - 32px))",
           backgroundColor: "#FFFFFF",
           borderRadius: 16,
           boxShadow: "0 16px 48px rgba(0,0,0,0.16)",

@@ -71,7 +71,7 @@ export const StationModal = ({ open, onOpenChange }: StationModalProps) => {
       {/* Panel */}
       <div
         style={{
-          width: 460, maxHeight: "82vh",
+          width: "min(460px, calc(100vw - 32px))", maxHeight: "82vh",
           backgroundColor: "#FFFFFF",
           borderRadius: 16,
           boxShadow: "0 16px 48px rgba(0,0,0,0.18)",

@@ -185,7 +185,10 @@ function ClientList({ clients, onAdd, onEdit, onDelete, sel, search, onSearchCha
         <SectionFilter search={search} onSearchChange={onSearchChange} searchPlaceholder="Search clients..." />
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div
+        style={{ display: "flex", flexDirection: "column", gap: 10 }}
+        onClick={(e) => { if (e.target === e.currentTarget) sel.clear(); }}
+      >
         {clients.length === 0 && (
           <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>No clients yet.</p>
         )}

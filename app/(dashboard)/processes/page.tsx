@@ -11,7 +11,7 @@ import "@xyflow/react/dist/style.css";
 import {
   ListTodo, Zap, Building2, ChevronRight, Plus,
   Cpu, User2, Workflow, Clock, Search, ArrowLeft, DollarSign,
-  Copy, Trash2, Lock, PenLine,
+  Copy, Trash2, Lock, PenLine, Maximize2, Minimize2,
 } from "lucide-react";
 import { TasksContent } from "@/app/(dashboard)/processes/[productId]/tasks/page";
 import { ResizableDivider } from "@/components/ui/resizable-divider";
@@ -21,6 +21,7 @@ import {
 } from "@/components/factory/FactoryFloorBuilder";
 import { useManufacturingStore } from "@/stores/useManufacturingStore";
 import { useFactoryStore } from "@/stores/useFactoryStore";
+import { usePlanOverlayStore } from "@/stores/usePlanOverlayStore";
 import type { FactoryZone, FactoryZoneNode, FactoryFlowPath, FactoryWall, WorkflowAttachment } from "@/types/factory";
 import { StartEndNode } from "@/components/manufacturing/StartEndNode";
 
@@ -132,9 +133,9 @@ function WfPlanNode({ data }: { data: { workflowId: string; name: string } }) {
   return (
     <>
       <Handle type="target" position={Position.Left}
-        style={{ background: "#F56300", width: 10, height: 10, border: "2px solid #111" }} />
-      <div style={{ width: 240, backgroundColor: "#181818", border: "1.5px solid rgba(245,99,0,0.35)",
-        borderRadius: 10, overflow: "hidden", userSelect: "none", boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}>
+        style={{ background: "#F56300", width: 10, height: 10, border: "2px solid var(--bg)" }} />
+      <div style={{ width: 240, backgroundColor: "var(--surface)", border: "1.5px solid rgba(245,99,0,0.35)",
+        borderRadius: 10, overflow: "hidden", userSelect: "none", boxShadow: "0 4px 16px rgba(0,0,0,0.25)" }}>
         <div style={{ padding: "8px 12px", backgroundColor: "rgba(245,99,0,0.12)",
           borderBottom: "1px solid rgba(245,99,0,0.2)",
           display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -142,25 +143,25 @@ function WfPlanNode({ data }: { data: { workflowId: string; name: string } }) {
             <Workflow size={12} color="#F56300" />
             <span style={{ fontSize: 12, fontWeight: 700, color: "#F56300" }}>{data.name}</span>
           </div>
-          <span style={{ fontSize: 10, color: "#888", display: "flex", alignItems: "center", gap: 3 }}>
+          <span style={{ fontSize: 10, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 3 }}>
             <Clock size={9} />{" "}{fmtMin(totalMin)}
           </span>
         </div>
         <div style={{ padding: "6px 12px 8px", display: "flex", flexDirection: "column", gap: 2 }}>
           {wfTasks.map((t, i) => (
             <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 9, color: "#555", width: 12, textAlign: "right" }}>{i + 1}</span>
+              <span style={{ fontSize: 9, color: "var(--text-tertiary)", width: 12, textAlign: "right" }}>{i + 1}</span>
               {t.optionSet === "machine" ? <Cpu size={9} color="#2563EB" /> : <User2 size={9} color="#059669" />}
-              <span style={{ fontSize: 10, color: "#aaa", flex: 1 }}>{t.name}</span>
-              <span style={{ fontSize: 9, color: "#555" }}>{fmtMin(t.duration)}</span>
+              <span style={{ fontSize: 10, color: "var(--text-primary)", flex: 1 }}>{t.name}</span>
+              <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>{fmtMin(t.duration)}</span>
             </div>
           ))}
           {wfTasks.length === 0 &&
-            <span style={{ fontSize: 10, color: "#444", fontStyle: "italic" }}>No tasks assigned</span>}
+            <span style={{ fontSize: 10, color: "var(--text-tertiary)", fontStyle: "italic" }}>No tasks assigned</span>}
         </div>
       </div>
       <Handle type="source" position={Position.Right}
-        style={{ background: "#F56300", width: 10, height: 10, border: "2px solid #111" }} />
+        style={{ background: "#F56300", width: 10, height: 10, border: "2px solid var(--bg)" }} />
     </>
   );
 }
@@ -170,13 +171,13 @@ function TaskPlanNode({ data }: { data: { name: string; duration: number; option
   return (
     <>
       <Handle type="target" position={Position.Left}
-        style={{ background: isMachine ? "#2563EB" : "#059669", width: 8, height: 8, border: "2px solid #111" }} />
-      <div style={{ width: 200, backgroundColor: "#181818",
+        style={{ background: isMachine ? "#2563EB" : "#059669", width: 8, height: 8, border: "2px solid var(--bg)" }} />
+      <div style={{ width: 200, backgroundColor: "var(--surface)",
         border: `1.5px solid ${isMachine ? "rgba(37,99,235,0.35)" : "rgba(5,150,105,0.35)"}`,
-        borderRadius: 8, padding: "8px 12px", userSelect: "none", boxShadow: "0 2px 10px rgba(0,0,0,0.4)" }}>
+        borderRadius: 8, padding: "8px 12px", userSelect: "none", boxShadow: "0 2px 10px rgba(0,0,0,0.18)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
           {isMachine ? <Cpu size={11} color="#2563EB" /> : <User2 size={11} color="#059669" />}
-          <span style={{ fontSize: 11, fontWeight: 600, color: "#E8E8E8", flex: 1 }}>{data.name}</span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-primary)", flex: 1 }}>{data.name}</span>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 3,
@@ -184,11 +185,11 @@ function TaskPlanNode({ data }: { data: { name: string; duration: number; option
             color: isMachine ? "#2563EB" : "#059669" }}>
             {data.optionSet}
           </span>
-          <span style={{ fontSize: 10, color: "#888" }}>{fmtMin(data.duration)}</span>
+          <span style={{ fontSize: 10, color: "var(--text-secondary)" }}>{fmtMin(data.duration)}</span>
         </div>
       </div>
       <Handle type="source" position={Position.Right}
-        style={{ background: isMachine ? "#2563EB" : "#059669", width: 8, height: 8, border: "2px solid #111" }} />
+        style={{ background: isMachine ? "#2563EB" : "#059669", width: 8, height: 8, border: "2px solid var(--bg)" }} />
     </>
   );
 }
@@ -326,9 +327,9 @@ function WorkflowCanvasInner({
       connectionLineStyle={{ stroke: "#F56300", strokeWidth: 2, strokeDasharray: "6 3" }}
       edgesFocusable
     >
-      <Background id="bg-minor" variant={BackgroundVariant.Lines} gap={20}  lineWidth={0.4} color="#212121" style={{ backgroundColor: "#1A1A1A" }} />
-      <Background id="bg-major" variant={BackgroundVariant.Lines} gap={100} lineWidth={0.8} color="#282828" />
-      <Controls style={{ backgroundColor: "#141414", border: "1px solid #2a2a2a", borderRadius: 8 }} />
+      <Background id="bg-minor" variant={BackgroundVariant.Lines} gap={20}  lineWidth={0.4} color="var(--border)" style={{ backgroundColor: "var(--bg)" }} />
+      <Background id="bg-major" variant={BackgroundVariant.Lines} gap={100} lineWidth={0.8} color="var(--border)" />
+      <Controls style={{ backgroundColor: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8 }} />
     </ReactFlow>
   );
 }
@@ -377,17 +378,17 @@ function TaskCanvasInner({ workflowId, workflowName, workflows, tasks, onBack, e
       edgesFocusable
       connectionLineStyle={{ stroke: "#3B82F6", strokeWidth: 2, strokeDasharray: "6 3" }}
     >
-      <Background id="bg-minor" variant={BackgroundVariant.Lines} gap={20}  lineWidth={0.4} color="#212121" style={{ backgroundColor: "#1A1A1A" }} />
-      <Background id="bg-major" variant={BackgroundVariant.Lines} gap={100} lineWidth={0.8} color="#282828" />
-      <Controls style={{ backgroundColor: "#141414", border: "1px solid #2a2a2a", borderRadius: 8 }} />
+      <Background id="bg-minor" variant={BackgroundVariant.Lines} gap={20}  lineWidth={0.4} color="var(--border)" style={{ backgroundColor: "var(--bg)" }} />
+      <Background id="bg-major" variant={BackgroundVariant.Lines} gap={100} lineWidth={0.8} color="var(--border)" />
+      <Controls style={{ backgroundColor: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8 }} />
       <Panel position="top-left">
         <button
           onClick={onBack}
           style={{
             display: "flex", alignItems: "center", gap: 6,
             padding: "6px 14px 6px 10px",
-            backgroundColor: "#141414", border: "1px solid #2a2a2a",
-            borderRadius: 8, cursor: "pointer", color: "#E0E0E0",
+            backgroundColor: "var(--surface)", border: "1px solid var(--border)",
+            borderRadius: 8, cursor: "pointer", color: "var(--text-primary)",
             fontSize: 13, fontWeight: 600,
             transition: "border-color 0.12s, color 0.12s",
           }}
@@ -396,8 +397,8 @@ function TaskCanvasInner({ workflowId, workflowName, workflows, tasks, onBack, e
             (e.currentTarget as HTMLButtonElement).style.color = "#F56300";
           }}
           onMouseLeave={e => {
-            (e.currentTarget as HTMLButtonElement).style.borderColor = "#2a2a2a";
-            (e.currentTarget as HTMLButtonElement).style.color = "#E0E0E0";
+            (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
+            (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)";
           }}
         >
           <ArrowLeft size={13} />
@@ -425,15 +426,15 @@ function WorkflowLibItem({ wf, tasks }: { wf: any; tasks: any[] }) {
       onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(245,99,0,0.22)"}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: "#E0E0E0" }}>{wf.name}</span>
-        <span style={{ fontSize: 10, color: "#F56300", fontWeight: 600 }}>{fmtMin(totalMin)}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>{wf.name}</span>
+        <span style={{ fontSize: 10, color: "var(--accent)", fontWeight: 600 }}>{fmtMin(totalMin)}</span>
       </div>
       {wfTasks.map((task: any, i: number) => (
         <div key={task.id} style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
-          <span style={{ fontSize: 9, color: "#555", width: 10, textAlign: "right" }}>{i + 1}</span>
+          <span style={{ fontSize: 9, color: "var(--text-tertiary)", width: 10, textAlign: "right" }}>{i + 1}</span>
           {task.optionSet === "machine" ? <Cpu size={9} color="#2563EB" /> : <User2 size={9} color="#059669" />}
-          <span style={{ fontSize: 10, color: "#888", flex: 1 }}>{task.name}</span>
-          <span style={{ fontSize: 9, color: "#555" }}>{fmtMin(task.duration)}</span>
+          <span style={{ fontSize: 10, color: "var(--text-secondary)", flex: 1 }}>{task.name}</span>
+          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>{fmtMin(task.duration)}</span>
         </div>
       ))}
     </div>
@@ -464,13 +465,13 @@ function CostTimePanel({
   });
 
   const section = (label: string) => (
-    <div style={{ fontSize: 10, fontWeight: 700, color: "#555", textTransform: "uppercase",
+    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase",
       letterSpacing: "0.08em", marginBottom: 8 }}>{label}</div>
   );
   const row = (label: string, val: string, highlight?: boolean) => (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0" }}>
-      <span style={{ fontSize: 11, color: "#888" }}>{label}</span>
-      <span style={{ fontSize: 12, fontWeight: highlight ? 700 : 500, color: highlight ? "#F56300" : "#E0E0E0" }}>{val}</span>
+      <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: highlight ? 700 : 500, color: highlight ? "var(--accent)" : "var(--text-primary)" }}>{val}</span>
     </div>
   );
 
@@ -481,28 +482,28 @@ function CostTimePanel({
         {section(drillWfId ? "Tasks in workflow" : "On canvas")}
         {drillWfId ? (
           drillTasks.length === 0
-            ? <p style={{ fontSize: 11, color: "#444", fontStyle: "italic" }}>No tasks in this workflow.</p>
+            ? <p style={{ fontSize: 11, color: "var(--text-tertiary)", fontStyle: "italic" }}>No tasks in this workflow.</p>
             : drillTasks.map((t: any, i: number) => (
               <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 0",
-                borderBottom: "1px solid #1e1e1e" }}>
-                <span style={{ fontSize: 9, color: "#444", width: 14 }}>{i + 1}</span>
+                borderBottom: "1px solid var(--border)" }}>
+                <span style={{ fontSize: 9, color: "var(--text-tertiary)", width: 14 }}>{i + 1}</span>
                 {t.optionSet === "machine" ? <Cpu size={9} color="#2563EB" /> : <User2 size={9} color="#059669" />}
-                <span style={{ flex: 1, fontSize: 11, color: "#D0D0D0" }}>{t.name}</span>
-                <span style={{ fontSize: 10, color: "#888" }}>{fmtMin(t.duration)}</span>
+                <span style={{ flex: 1, fontSize: 11, color: "var(--text-primary)" }}>{t.name}</span>
+                <span style={{ fontSize: 10, color: "var(--text-secondary)" }}>{fmtMin(t.duration)}</span>
               </div>
             ))
         ) : (
           rfNodes.filter(n => n.type === "wfPlan").length === 0
-            ? <p style={{ fontSize: 11, color: "#444", fontStyle: "italic" }}>Drag workflows onto the canvas.</p>
+            ? <p style={{ fontSize: 11, color: "var(--text-tertiary)", fontStyle: "italic" }}>Drag workflows onto the canvas.</p>
             : rfNodes.filter(n => n.type === "wfPlan").map(n => {
               const wf = workflows.find((w: any) => w.id === n.data.workflowId);
               const dur = (wf?.taskIds ?? [])
                 .reduce((s: number, id: string) => s + (tasks.find((t: any) => t.id === id)?.duration ?? 0), 0);
               return (
                 <div key={n.id} style={{ display: "flex", justifyContent: "space-between",
-                  padding: "4px 0", borderBottom: "1px solid #1e1e1e" }}>
-                  <span style={{ fontSize: 11, color: "#D0D0D0" }}>{n.data.name as string}</span>
-                  <span style={{ fontSize: 10, color: "#888" }}>{fmtMin(dur)}</span>
+                  padding: "4px 0", borderBottom: "1px solid var(--border)" }}>
+                  <span style={{ fontSize: 11, color: "var(--text-primary)" }}>{n.data.name as string}</span>
+                  <span style={{ fontSize: 10, color: "var(--text-secondary)" }}>{fmtMin(dur)}</span>
                 </div>
               );
             })
@@ -510,36 +511,36 @@ function CostTimePanel({
       </div>
 
       {/* Prediction */}
-      <div style={{ padding: "14px", borderTop: "1px solid #242424", backgroundColor: "#0F0F0F", flexShrink: 0 }}>
+      <div style={{ padding: "14px", borderTop: "1px solid var(--border)", backgroundColor: "var(--bg)", flexShrink: 0 }}>
         {section(drillWfId ? "Workflow estimate" : "Plan estimate")}
         {drillWfId ? (
           <>
             {row("Duration",  fmtMin(drillTime))}
-            <div style={{ height: 1, backgroundColor: "#1e1e1e", margin: "4px 0" }} />
+            <div style={{ height: 1, backgroundColor: "var(--border)", margin: "4px 0" }} />
             {row("Labour",    fmtRand(drillLabor))}
             {row("Machine",   fmtRand(drillMachine))}
             {row("Materials", "—")}
-            <div style={{ height: 1, backgroundColor: "#2a2a2a", margin: "6px 0" }} />
+            <div style={{ height: 1, backgroundColor: "var(--border)", margin: "6px 0" }} />
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: "#555", textTransform: "uppercase", letterSpacing: "0.06em" }}>Per unit</span>
-              <span style={{ fontSize: 20, fontWeight: 800, color: "#F56300" }}>{fmtRand(drillLabor + drillMachine)}</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Per unit</span>
+              <span style={{ fontSize: 20, fontWeight: 800, color: "var(--accent)" }}>{fmtRand(drillLabor + drillMachine)}</span>
             </div>
           </>
         ) : criticalTime === null ? (
-          <p style={{ fontSize: 11, color: "#444", fontStyle: "italic", lineHeight: 1.6 }}>
+          <p style={{ fontSize: 11, color: "var(--text-tertiary)", fontStyle: "italic", lineHeight: 1.6 }}>
             Connect Start → workflows → End to see time and cost estimates.
           </p>
         ) : (
           <>
             {row("Critical path", fmtMin(criticalTime))}
-            <div style={{ height: 1, backgroundColor: "#1e1e1e", margin: "4px 0" }} />
+            <div style={{ height: 1, backgroundColor: "var(--border)", margin: "4px 0" }} />
             {row("Labour",    fmtRand(laborCost))}
             {row("Machine",   fmtRand(machineCost))}
             {row("Materials", "—")}
-            <div style={{ height: 1, backgroundColor: "#2a2a2a", margin: "6px 0" }} />
+            <div style={{ height: 1, backgroundColor: "var(--border)", margin: "6px 0" }} />
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: "#555", textTransform: "uppercase", letterSpacing: "0.06em" }}>Per unit</span>
-              <span style={{ fontSize: 20, fontWeight: 800, color: "#F56300" }}>{fmtRand(total)}</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Per unit</span>
+              <span style={{ fontSize: 20, fontWeight: 800, color: "var(--accent)" }}>{fmtRand(total)}</span>
             </div>
           </>
         )}
@@ -563,13 +564,63 @@ function ProductionPlannerTab() {
   const [isEditMode,   setIsEditMode]   = useState(false);
   const [libWidth,     setLibWidth]     = useState(200);
   const [costWidth,    setCostWidth]    = useState(220);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const editorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) editorRef.current?.requestFullscreen();
+    else document.exitFullscreen();
+  };
+
+  useEffect(() => {
+    if (view !== "edit") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return;
+      if (e.key === "f" || e.key === "F") toggleFullscreen();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [view]);
 
   const { setData, workflows, tasks } = useManufacturingStore();
+  const setOverlayPlans = usePlanOverlayStore(s => s.setPlans);
 
   useEffect(() => {
     if (useManufacturingStore.getState().tasks.length === 0) setData(PLANNER_DEMO);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const palette = ["#F56300", "#2563EB", "#059669", "#7C3AED", "#DC2626", "#0891B2"];
+    const overlayPlans = plans.map(plan => {
+      const seen = new Set<string>();
+      const wfEntries = plan.rfNodes
+        .filter(n => n.type === "wfPlan")
+        .map(n => (n.data as { workflowId: string }).workflowId)
+        .filter(wfId => (seen.has(wfId) ? false : (seen.add(wfId), true)))
+        .map((wfId, i) => {
+          const wf = workflows.find((w: any) => w.id === wfId);
+          const durationMin = (wf?.taskIds ?? []).reduce((s: number, tid: string) =>
+            s + (tasks.find((t: any) => t.id === tid)?.duration ?? 0), 0);
+          return {
+            id: wfId,
+            name: wf?.name ?? "Workflow",
+            durationH: Math.round((durationMin / 60) * 100) / 100,
+            color: palette[i % palette.length],
+          };
+        });
+      return { id: plan.id, name: plan.name, workflows: wfEntries };
+    });
+    setOverlayPlans(overlayPlans);
+  }, [plans, workflows, tasks, setOverlayPlans]);
 
   const filteredProducts = MOCK_PRODUCTS.filter(p =>
     p.name.toLowerCase().includes(searchQ.toLowerCase()));
@@ -779,22 +830,22 @@ function ProductionPlannerTab() {
   const drillWorkflow = drillWfId ? workflows.find(w => w.id === drillWfId) : null;
 
   return (
-    <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", backgroundColor: "#1A1A1A" }}>
+    <div ref={editorRef} style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", backgroundColor: "var(--bg)" }}>
       {/* Editor header */}
       <div style={{ height: 44, display: "flex", alignItems: "center", padding: "0 16px",
-        backgroundColor: "#141414", borderBottom: "1px solid #242424", flexShrink: 0, gap: 10 }}>
+        backgroundColor: "var(--surface)", borderBottom: "1px solid var(--border)", flexShrink: 0, gap: 10 }}>
         <button onClick={() => { setView("landing"); setDrillWfId(null); }}
           style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none",
-            cursor: "pointer", color: "#888", fontSize: 13, padding: "0 4px", flexShrink: 0 }}>
+            cursor: "pointer", color: "var(--text-secondary)", fontSize: 13, padding: "0 4px", flexShrink: 0 }}>
           <ArrowLeft size={14} /> Plans
         </button>
-        <span style={{ color: "#2e2e2e" }}>›</span>
-        <span style={{ fontSize: 13, fontWeight: 600, color: "#E0E0E0", flexShrink: 0 }}>{activePlan.name}</span>
+        <span style={{ color: "var(--border)" }}>›</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", flexShrink: 0 }}>{activePlan.name}</span>
         {drillWorkflow && (
           <>
-            <span style={{ color: "#2e2e2e" }}>›</span>
+            <span style={{ color: "var(--border)" }}>›</span>
             <button onClick={() => setDrillWfId(null)}
-              style={{ fontSize: 13, color: "#F56300", background: "none", border: "none", cursor: "pointer", fontWeight: 600, flexShrink: 0 }}>
+              style={{ fontSize: 13, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", fontWeight: 600, flexShrink: 0 }}>
               {drillWorkflow.name}
             </button>
           </>
@@ -802,36 +853,45 @@ function ProductionPlannerTab() {
         <div style={{ flex: 1 }} />
         <button onClick={duplicatePlan} title="Duplicate plan"
           style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center",
-            background: "none", border: "1px solid #2a2a2a", borderRadius: 7, cursor: "pointer", color: "#888",
+            background: "none", border: "1px solid var(--border)", borderRadius: 7, cursor: "pointer", color: "var(--text-secondary)",
             transition: "border-color 0.12s, color 0.12s", flexShrink: 0 }}
-          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#555"; (e.currentTarget as HTMLButtonElement).style.color = "#ccc"; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#2a2a2a"; (e.currentTarget as HTMLButtonElement).style.color = "#888"; }}>
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--text-tertiary)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)"; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text-secondary)"; }}>
           <Copy size={13} />
         </button>
         <button onClick={deletePlan} title="Delete plan"
           style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center",
-            background: "none", border: "1px solid #2a2a2a", borderRadius: 7, cursor: "pointer", color: "#888",
+            background: "none", border: "1px solid var(--border)", borderRadius: 7, cursor: "pointer", color: "var(--text-secondary)",
             transition: "border-color 0.12s, color 0.12s", flexShrink: 0 }}
           onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#ef4444"; (e.currentTarget as HTMLButtonElement).style.color = "#ef4444"; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#2a2a2a"; (e.currentTarget as HTMLButtonElement).style.color = "#888"; }}>
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text-secondary)"; }}>
           <Trash2 size={13} />
         </button>
-        <div style={{ width: 1, height: 20, backgroundColor: "#2a2a2a", flexShrink: 0 }} />
+        <div style={{ width: 1, height: 20, backgroundColor: "var(--border)", flexShrink: 0 }} />
         <button
           onClick={() => setIsEditMode(m => !m)}
           title={isEditMode ? "Lock (view mode)" : "Unlock (edit mode)"}
           style={{ display: "flex", alignItems: "center", gap: 5, padding: "0 10px", height: 28,
-            border: `1px solid ${isEditMode ? "#F5630066" : "#2a2a2a"}`,
+            border: `1px solid ${isEditMode ? "#F5630066" : "var(--border)"}`,
             borderRadius: 7, cursor: "pointer", fontSize: 12, fontWeight: 600, flexShrink: 0,
             backgroundColor: isEditMode ? "rgba(245,99,0,0.12)" : "transparent",
-            color: isEditMode ? "#F56300" : "#888", transition: "all 0.15s" }}
+            color: isEditMode ? "var(--accent)" : "var(--text-secondary)", transition: "all 0.15s" }}
         >
           {isEditMode ? <PenLine size={12} /> : <Lock size={12} />}
           {isEditMode ? "Editing" : "View"}
         </button>
-        <div style={{ width: 1, height: 20, backgroundColor: "#2a2a2a", flexShrink: 0 }} />
+        <div style={{ width: 1, height: 20, backgroundColor: "var(--border)", flexShrink: 0 }} />
+        <button onClick={toggleFullscreen} title={isFullscreen ? "Exit Fullscreen (F)" : "Fullscreen (F)"}
+          style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center",
+            background: "none", border: "1px solid var(--border)", borderRadius: 7, cursor: "pointer", color: "var(--text-secondary)",
+            transition: "border-color 0.12s, color 0.12s", flexShrink: 0 }}
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--text-tertiary)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)"; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text-secondary)"; }}>
+          {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+        </button>
+        <div style={{ width: 1, height: 20, backgroundColor: "var(--border)", flexShrink: 0 }} />
         <button onClick={savePlan}
-          style={{ padding: "0 16px", height: 28, backgroundColor: "#F56300", border: "none",
+          style={{ padding: "0 16px", height: 28, backgroundColor: "var(--accent)", border: "none",
             borderRadius: 7, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>
           Save plan
         </button>
@@ -841,13 +901,13 @@ function ProductionPlannerTab() {
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
         {/* Left: workflow library */}
         {!drillWfId && (<>
-          <div style={{ width: libWidth, minWidth: libWidth, backgroundColor: "#0F0F0F",
+          <div style={{ width: libWidth, minWidth: libWidth, backgroundColor: "var(--surface)",
             display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0, position: "relative" }}>
-            <div style={{ padding: "12px 14px", borderBottom: "1px solid #1e1e1e" }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: "#555", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+            <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--border)" }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                 Workflows
               </span>
-              <p style={{ fontSize: 10, color: "#3a3a3a", marginTop: 3, lineHeight: 1.5, marginBottom: 0 }}>
+              <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 3, lineHeight: 1.5, marginBottom: 0 }}>
                 {isEditMode ? "Drag onto canvas" : "Enable edit mode to drag"}
               </p>
             </div>
@@ -859,14 +919,14 @@ function ProductionPlannerTab() {
                 );
                 const available = workflows.filter(wf => !placedIds.has(wf.id));
                 if (available.length === 0 && workflows.length > 0)
-                  return <p style={{ fontSize: 11, color: "#3a3a3a", fontStyle: "italic" }}>All workflows are on the canvas.</p>;
+                  return <p style={{ fontSize: 11, color: "var(--text-tertiary)", fontStyle: "italic" }}>All workflows are on the canvas.</p>;
                 if (workflows.length === 0)
-                  return <p style={{ fontSize: 11, color: "#3a3a3a", fontStyle: "italic" }}>No workflows. Add them in the Task Manager.</p>;
+                  return <p style={{ fontSize: 11, color: "var(--text-tertiary)", fontStyle: "italic" }}>No workflows. Add them in the Task Manager.</p>;
                 return available.map(wf => <WorkflowLibItem key={wf.id} wf={wf} tasks={tasks} />);
               })()}
             </div>
           </div>
-          <ResizableDivider variant="dark" onDrag={dx => setLibWidth(w => Math.max(140, Math.min(380, w + dx)))} />
+          <ResizableDivider onDrag={dx => setLibWidth(w => Math.max(140, Math.min(380, w + dx)))} />
         </>)}
 
         {/* Center: canvas */}
@@ -898,13 +958,13 @@ function ProductionPlannerTab() {
         </div>
 
         {/* Right: cost & time */}
-        <ResizableDivider variant="dark" onDrag={dx => setCostWidth(w => Math.max(140, Math.min(380, w - dx)))} />
-        <div style={{ width: costWidth, minWidth: costWidth, backgroundColor: "#141414",
+        <ResizableDivider onDrag={dx => setCostWidth(w => Math.max(140, Math.min(380, w - dx)))} />
+        <div style={{ width: costWidth, minWidth: costWidth, backgroundColor: "var(--surface)",
           display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0 }}>
-          <div style={{ padding: "12px 14px", borderBottom: "1px solid #1e1e1e" }}>
+          <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--border)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <DollarSign size={12} color="#555" />
-              <span style={{ fontSize: 10, fontWeight: 700, color: "#555", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+              <DollarSign size={12} color="var(--text-tertiary)" />
+              <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                 Cost & Time
               </span>
             </div>
@@ -919,8 +979,8 @@ function ProductionPlannerTab() {
 
       {/* Status bar */}
       <div style={{ height: 24, display: "flex", alignItems: "center", padding: "0 16px",
-        backgroundColor: "#0A0A0A", borderTop: "1px solid #1a1a1a", gap: 16, flexShrink: 0 }}>
-        <span style={{ fontSize: 9, color: "#333", fontFamily: "monospace" }}>
+        backgroundColor: "var(--bg)", borderTop: "1px solid var(--border)", gap: 16, flexShrink: 0 }}>
+        <span style={{ fontSize: 9, color: "var(--text-tertiary)", fontFamily: "monospace" }}>
           {drillWfId
             ? "drag tasks · del key removes · draw connections between tasks"
             : "drag workflow from library · click node to inspect tasks · del key removes · connect for parallel"}

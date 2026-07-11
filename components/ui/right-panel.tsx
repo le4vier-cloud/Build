@@ -31,7 +31,7 @@ export function RightPanel({
       />
       <div style={{
         position: "fixed", top: 0, right: 0, bottom: 0, zIndex: 50,
-        width: 440,
+        width: "min(440px, 100vw)",
         backgroundColor: "var(--bg)",
         borderLeft: "1px solid var(--border)",
         display: "flex", flexDirection: "column",
