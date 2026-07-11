@@ -676,7 +676,7 @@ function StaffList({
             search={search}
             onSearchChange={onSearchChange}
             searchPlaceholder="Search name or email..."
-            active={!!roleFilter || activeFilter !== null || wageRange[0] > 0 || wageRange[1] < 999}
+            active={!!roleFilter || activeFilter !== null || wageRange[0] > 0 || wageRange[1] < Math.max(...allStaff.map(s => s.hourly_wage), 100)}
           >
             <RangeHistogram
               label="Hourly Wage"
@@ -1154,7 +1154,7 @@ export default function StaffPage() {
   const [search, setSearch]     = useState("");
   const [roleFilter, setRoleFilter]     = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<boolean | null>(null);
-  const [wageRange, setWageRange] = useState<[number, number]>([0, 999]);
+  const [wageRange, setWageRange] = useState<[number, number]>(() => [0, Math.max(...MOCK_STAFF.map(s => s.hourly_wage), 100)]);
   const sel = useSelection<string>();
 
   const filtered = staff.filter(m => {

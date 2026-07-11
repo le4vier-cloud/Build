@@ -196,7 +196,7 @@ function ToolList({
           search={search}
           onSearchChange={onSearchChange}
           searchPlaceholder="Search tools..."
-          active={idleRange[0] > 0 || idleRange[1] < 99 || workingRange[0] > 0 || workingRange[1] < 99}
+          active={idleRange[0] > 0 || idleRange[1] < Math.max(...allTools.map(t => t.cost_per_min_idle), 1) || workingRange[0] > 0 || workingRange[1] < Math.max(...allTools.map(t => t.cost_per_min_working), 1)}
         >
           <RangeHistogram
             label="Idle Cost / min"
@@ -874,8 +874,8 @@ export default function ToolsPage() {
   const [records, setRecords]     = useState<ServiceRecord[]>(SEED_RECORDS);
   const [alerts, setAlerts]       = useState<ServiceAlert[]>(SEED_ALERTS);
   const [search, setSearch]       = useState("");
-  const [idleRange,   setIdleRange]   = useState<[number, number]>([0, 99]);
-  const [workingRange, setWorkingRange] = useState<[number, number]>([0, 99]);
+  const [idleRange,   setIdleRange]   = useState<[number, number]>(() => [0, Math.max(...SEED_TOOLS.map(t => t.cost_per_min_idle), 1)]);
+  const [workingRange, setWorkingRange] = useState<[number, number]>(() => [0, Math.max(...SEED_TOOLS.map(t => t.cost_per_min_working), 1)]);
   const sel = useSelection<string>();
 
   const filteredTools = tools.filter(t => {

@@ -90,7 +90,7 @@ export default function ProductsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm]           = useState(BLANK_FORM);
   const [search, setSearch]       = useState("");
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 99999]);
+  const [priceRange, setPriceRange] = useState<[number, number]>(() => [0, Math.max(...SEED_PRODUCTS.map(p => p.basePrice), 100)]);
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
   const sel = useSelection<string>();
 
@@ -232,7 +232,7 @@ function ProductList({
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <SectionFilter
           search={search} onSearchChange={onSearchChange} searchPlaceholder="Search products..."
-          active={priceRange[0] > 0 || priceRange[1] < 99999}
+          active={priceRange[0] > 0 || priceRange[1] < Math.max(...allProducts.map(p => p.basePrice), 100)}
         >
           <RangeHistogram
             label="Base Price"

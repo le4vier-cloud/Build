@@ -27,6 +27,7 @@ import { ResizableDivider } from "@/components/ui/resizable-divider";
 import { FactoryZoneNode  } from "@/components/factory/FactoryZoneNode";
 import { FactoryWallNode  } from "@/components/factory/FactoryWallNode";
 import { WallHandleNode   } from "@/components/factory/WallHandleNode";
+import { WallJoinCapNode  } from "@/components/factory/WallJoinCapNode";
 import {
   ZONE_COLORS, ZONE_LABELS, ZoneType,
   WALL_CONFIG, WallType,
@@ -122,9 +123,10 @@ const ZONE_ICON: Record<ZoneType, React.ReactNode> = {
 };
 
 const nodeTypes = {
-  factoryZone: FactoryZoneNode,
-  factoryWall: FactoryWallNode,
-  wallHandle:  WallHandleNode,
+  factoryZone:  FactoryZoneNode,
+  factoryWall:  FactoryWallNode,
+  wallHandle:   WallHandleNode,
+  wallJoinCap:  WallJoinCapNode,
 };
 
 type ToolMode = "select" | "add" | "connect" | "wall" | "walkway";
@@ -254,9 +256,9 @@ function FactoryCanvasInner({
   const { zoom } = useViewport();
 
   const {
-    zones, nodes: storeNodes, edges: storeEdges, walls, planAttachments, selectedNodeId,
+    zones, nodes: storeNodes, edges: storeEdges, walls, planAttachments,
     addZone, removeZone, batchMoveNodes, batchMoveWalls, setSelectedNode, addFlowPath,
-    addWall, removeWall, updateWall,
+    addWall, removeWall, updateWall, setIsBranchDragging,
   } = useFactoryStore();
 
   const { plans: overlayPlans } = usePlanOverlayStore();
@@ -269,9 +271,6 @@ function FactoryCanvasInner({
 
   const [ctxMenu, setCtxMenu] = useState<CtxMenuState | null>(null);
   const closeCtx = useCallback(() => setCtxMenu(null), []);
-
-  /* Which wall's hover state currently shows its green endpoint handles */
-  const [hoveredWallId, setHoveredWallId] = useState<string | null>(null);
 
   /* Faint live preview of a branch segment while dragging an endpoint handle
      sideways — cleared once the drag ends (committed or not). */
@@ -291,22 +290,63 @@ function FactoryCanvasInner({
   }, [ctxMenu]);
 
   /* ── Junction classification ──────────────────────
-     For every wall endpoint, count how many OTHER wall endpoints share that
-     exact point. 0 → free end, 1 → L-corner, 2 → T, 3+ → X (four-way cross).
-     Corners/T's round; free ends round only for walkways (a capsule cap);
-     X junctions are always sharp since nothing is "outside" a 4-way meet. */
+     For every point where a wall endpoint lands, record which compass
+     directions have a wall extending away from it. A point with only 1
+     direction is a free end; 2+ is a real junction that gets a join-cap
+     (see WallJoinCapNode) instead of relying on two independently-bordered
+     rectangles to blend into one outline. This has to account for two
+     distinct ways an endpoint can meet another wall: landing exactly on
+     that wall's OWN endpoint (a true corner), or landing on the interior
+     of a longer wall's body (a branch T-ing into the side of a through-
+     wall) — the latter is the common case this floor's dividers actually
+     use, and needs the through-wall's own span synthesized as "occupied"
+     in both directions so the meeting reads as a flush T, not a free end
+     rounding a cap into the middle of a straight wall. */
+  type Dir = "up" | "down" | "left" | "right";
   const pointKey = (p: { x: number; y: number }) => `${Math.round(p.x)}:${Math.round(p.y)}`;
-  const endpointCounts = new Map<string, number>();
-  walls.forEach((w) => {
-    endpointCounts.set(pointKey(w.start), (endpointCounts.get(pointKey(w.start)) ?? 0) + 1);
-    endpointCounts.set(pointKey(w.end),   (endpointCounts.get(pointKey(w.end))   ?? 0) + 1);
-  });
-  const neighborsAt = (p: { x: number; y: number }) => (endpointCounts.get(pointKey(p)) ?? 1) - 1;
-  const isRoundedEnd = (neighbors: number, isWall: boolean) => {
-    if (neighbors >= 3) return false;        // X — always sharp
-    if (neighbors === 0) return !isWall;      // free end — walkways cap, walls stay flat
-    return true;                              // L-corner or T — rounded outside
+  const dirOf = (from: { x: number; y: number }, to: { x: number; y: number }): Dir =>
+    Math.abs(to.x - from.x) >= Math.abs(to.y - from.y)
+      ? (to.x >= from.x ? "right" : "left")
+      : (to.y >= from.y ? "down" : "up");
+
+  const junctions = new Map<string, { dirs: Set<Dir>; wallIds: Set<string>; thickness: number; isWall: boolean }>();
+  const addDir = (p: { x: number; y: number }, dir: Dir, w: FactoryWall) => {
+    const key = pointKey(p);
+    const j = junctions.get(key) ?? { dirs: new Set(), wallIds: new Set(), thickness: w.thickness, isWall: w.wallType === "wall" };
+    j.dirs.add(dir);
+    j.wallIds.add(w.id);
+    j.thickness = Math.max(j.thickness, w.thickness);
+    junctions.set(key, j);
   };
+  walls.forEach((w) => {
+    addDir(w.start, dirOf(w.start, w.end), w);
+    addDir(w.end,   dirOf(w.end, w.start), w);
+  });
+  /* An endpoint landing strictly inside another wall's span (not at either
+     of ITS endpoints, which is the true-corner case already handled above)
+     synthesizes that through-wall's pass-through occupation at this point. */
+  const onWallBody = (w: FactoryWall, p: { x: number; y: number }) => {
+    const horiz = w.start.y === w.end.y;
+    if (horiz) {
+      if (Math.round(p.y) !== Math.round(w.start.y)) return false;
+      const lo = Math.min(w.start.x, w.end.x), hi = Math.max(w.start.x, w.end.x);
+      return p.x > lo + 1 && p.x < hi - 1;
+    }
+    if (Math.round(p.x) !== Math.round(w.start.x)) return false;
+    const lo = Math.min(w.start.y, w.end.y), hi = Math.max(w.start.y, w.end.y);
+    return p.y > lo + 1 && p.y < hi - 1;
+  };
+  walls.forEach((w) => {
+    [w.start, w.end].forEach((p) => {
+      walls.forEach((other) => {
+        if (other.id === w.id || !onWallBody(other, p)) return;
+        const horiz = other.start.y === other.end.y;
+        if (horiz) { addDir(p, "left", other); addDir(p, "right", other); }
+        else       { addDir(p, "up",   other); addDir(p, "down",  other); }
+      });
+    });
+  });
+  const dirsAt = (p: { x: number; y: number }) => junctions.get(pointKey(p))?.dirs.size ?? 1;
 
   /* ── Build ReactFlow nodes ── */
   const buildRfNodes = (): Node[] => [
@@ -320,44 +360,55 @@ function FactoryCanvasInner({
         style: { width: n.width, height: n.height },
       } as Node;
     }).filter(Boolean),
-    ...walls.flatMap((w): Node[] => {
+    /* Wall bodies — stacking order matters here: bodies paint first, join
+       caps paint over their seams next, and endpoint handle dots paint last
+       so they're never hidden underneath a cap. */
+    ...walls.map((w): Node => {
       const { len, angle, aabbW, aabbH, mid } = wallGeom(w);
-      const startNeighbors = neighborsAt(w.start);
-      const endNeighbors   = neighborsAt(w.end);
-      const isWall         = w.wallType === "wall";
-      const startRounded   = isRoundedEnd(startNeighbors, isWall);
-      const endRounded     = isRoundedEnd(endNeighbors, isWall);
-      const showHandles    = (hoveredWallId === w.id || selectedNodeId === w.id);
-      return [
-        /* Wall body node — AABB bounding box, inner div is CSS-rotated */
-        {
-          id: w.id, type: "factoryWall",
-          position: { x: mid.x - aabbW / 2, y: mid.y - aabbH / 2 },
-          data: {
-            wall: w, wallLength: len, angle, startRounded, endRounded,
-            onHoverChange: (h: boolean) => setHoveredWallId(h ? w.id : null),
-          },
-          style: { width: aabbW, height: aabbH },
-          selectable: true, draggable: true,
-        } as Node,
-        /* Start endpoint handle */
-        {
-          id: `wh-s-${w.id}`, type: "wallHandle",
-          position: { x: w.start.x - 6, y: w.start.y - 6 },
-          data: { wallId: w.id, which: "start", visible: showHandles && startNeighbors < 3 },
-          selectable: false, deletable: false,
-          style: { width: 12, height: 12 },
-        } as Node,
-        /* End endpoint handle */
-        {
-          id: `wh-e-${w.id}`, type: "wallHandle",
-          position: { x: w.end.x - 6, y: w.end.y - 6 },
-          data: { wallId: w.id, which: "end", visible: showHandles && endNeighbors < 3 },
-          selectable: false, deletable: false,
-          style: { width: 12, height: 12 },
-        } as Node,
-      ];
+      /* Free ends (no other wall touching) fully round for both wall types;
+         any junction stays flat on the wall's own body — the join-cap node
+         draws the correct outside curve there instead. */
+      const startRounded = dirsAt(w.start) <= 1;
+      const endRounded   = dirsAt(w.end) <= 1;
+      return {
+        id: w.id, type: "factoryWall",
+        position: { x: mid.x - aabbW / 2, y: mid.y - aabbH / 2 },
+        data: { wall: w, wallLength: len, angle, startRounded, endRounded },
+        style: { width: aabbW, height: aabbH },
+        selectable: true, draggable: true,
+      };
     }),
+    /* Join caps — one per point where 2+ walls meet */
+    ...[...junctions.entries()]
+      .filter(([, j]) => j.dirs.size >= 2)
+      .map(([key, j]): Node => {
+        const [x, y] = key.split(":").map(Number);
+        const size = j.thickness;
+        return {
+          id: `jc-${key}`, type: "wallJoinCap",
+          position: { x: x - size / 2, y: y - size / 2 },
+          data: { occupied: [...j.dirs], thickness: j.thickness, isWall: j.isWall, wallIds: [...j.wallIds] },
+          style: { width: size, height: size },
+          selectable: false, deletable: false, draggable: false,
+        };
+      }),
+    /* Endpoint handles — always on top */
+    ...walls.flatMap((w): Node[] => [
+      {
+        id: `wh-s-${w.id}`, type: "wallHandle",
+        position: { x: w.start.x - 6, y: w.start.y - 6 },
+        data: { wallId: w.id, which: "start", neighbors: dirsAt(w.start) },
+        selectable: false, deletable: false,
+        style: { width: 12, height: 12 },
+      },
+      {
+        id: `wh-e-${w.id}`, type: "wallHandle",
+        position: { x: w.end.x - 6, y: w.end.y - 6 },
+        data: { wallId: w.id, which: "end", neighbors: dirsAt(w.end) },
+        selectable: false, deletable: false,
+        style: { width: 12, height: 12 },
+      },
+    ]),
   ];
 
   /* ── Build ReactFlow edges (flow paths + overlay plan edges) ── */
@@ -432,7 +483,7 @@ function FactoryCanvasInner({
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState(buildRfNodes());
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState(buildRfEdges());
 
-  useEffect(() => { setRfNodes(buildRfNodes()); }, [storeNodes, zones, walls, planAttachments, hoveredWallId, selectedNodeId]);
+  useEffect(() => { setRfNodes(buildRfNodes()); }, [storeNodes, zones, walls, planAttachments]);
   useEffect(() => { setRfEdges(buildRfEdges()); }, [storeEdges, planAttachments, overlayPlans]);
   useEffect(() => { if (storeNodes.length > 0 || walls.length > 0) fitView({ padding: 0.2 }); }, []);
 
@@ -683,11 +734,13 @@ function FactoryCanvasInner({
       const result = computeHandleDragResult(node);
       if (result?.kind === "branch") {
         setDragPreview({ id: "__wall-preview__", ...result.wall });
+        setIsBranchDragging(true);
       } else {
         setDragPreview((prev) => (prev ? null : prev));
+        setIsBranchDragging(false);
       }
     },
-    [computeHandleDragResult],
+    [computeHandleDragResult, setIsBranchDragging],
   );
 
   /* ── Drag stop — handles handle nodes, wall bodies, zone nodes separately ── */
@@ -729,8 +782,9 @@ function FactoryCanvasInner({
       if (zoneMoves.length      > 0) batchMoveNodes(zoneMoves);
       if (wallBodyDeltas.length > 0) batchMoveWalls(wallBodyDeltas);
       setDragPreview(null);
+      setIsBranchDragging(false);
     },
-    [batchMoveNodes, batchMoveWalls, walls, updateWall, addWall, computeHandleDragResult],
+    [batchMoveNodes, batchMoveWalls, walls, updateWall, addWall, computeHandleDragResult, setIsBranchDragging],
   );
 
   const onNodeClick = useCallback(

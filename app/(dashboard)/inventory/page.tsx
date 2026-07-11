@@ -57,8 +57,10 @@ export default function InventoryPage() {
   const [hoveredId,  setHoveredId]  = useState<string | null>(null);
   const [buildPackPartId, setBuildPackPartId] = useState<string | null>(null);
 
-  const [qtyRange,  setQtyRange]  = useState<[number, number]>([0, 999]);
-  const [costRange, setCostRange] = useState<[number, number]>([0, 9999]);
+  const qtyMax  = Math.max(...items.map(i => i.qty), 100);
+  const costMax = Math.max(...items.map(i => i.cost), 100);
+  const [qtyRange,  setQtyRange]  = useState<[number, number]>(() => [0, qtyMax]);
+  const [costRange, setCostRange] = useState<[number, number]>(() => [0, costMax]);
   const sel = useSelection<string>();
 
   const filtered = items.filter((item) => {
@@ -129,19 +131,19 @@ export default function InventoryPage() {
           search={search}
           onSearchChange={setSearch}
           searchPlaceholder="Search parts..."
-          active={typeFilter !== "all" || qtyRange[0] > 0 || qtyRange[1] < 999 || costRange[0] > 0 || costRange[1] < 9999}
+          active={typeFilter !== "all" || qtyRange[0] > 0 || qtyRange[1] < qtyMax || costRange[0] > 0 || costRange[1] < costMax}
         >
           <RangeHistogram
             label="Qty in Stock"
             values={items.map(i => i.qty)}
-            min={0} max={Math.max(...items.map(i => i.qty), 100)}
+            min={0} max={qtyMax}
             value={qtyRange}
             onChange={setQtyRange}
           />
           <RangeHistogram
             label="Cost Price"
             values={items.map(i => i.cost)}
-            min={0} max={Math.max(...items.map(i => i.cost), 100)}
+            min={0} max={costMax}
             value={costRange}
             onChange={setCostRange}
             format={(n) => `R${n}`}

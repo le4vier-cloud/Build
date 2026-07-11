@@ -21,6 +21,16 @@ interface FactoryStore {
   selectedNodeId: string | null;
   planAttachments: WorkflowAttachment[];
 
+  /* Transient UI state — deliberately outside the node-rebuild path so
+     hover changes don't trigger a full ReactFlow node reconstruction. */
+  hoveredWallId: string | null;
+  setHoveredWallId: (id: string | null) => void;
+  /* True only while a handle is being dragged sideways into a branch —
+     used to hide just that handle's dot in favor of the faint line preview,
+     without affecting a plain reposition drag's own visual feedback. */
+  isBranchDragging: boolean;
+  setIsBranchDragging: (v: boolean) => void;
+
   /* ── History ── */
   canUndo: boolean;
   undo:    () => void;
@@ -75,6 +85,10 @@ export const useFactoryStore = create<FactoryStore>((set, get) => {
     walls: [],
     selectedNodeId: null,
     planAttachments: [],
+    hoveredWallId: null,
+    setHoveredWallId: (id) => set({ hoveredWallId: id }),
+    isBranchDragging: false,
+    setIsBranchDragging: (v) => set({ isBranchDragging: v }),
     _history: [],
     canUndo: false,
 

@@ -1,9 +1,22 @@
 "use client";
 
 import type { NodeProps } from "@xyflow/react";
+import { useFactoryStore } from "@/stores/useFactoryStore";
 
-export function WallHandleNode({ data, selected }: NodeProps) {
-  const { visible = true } = data as { visible?: boolean };
+export function WallHandleNode({ data, selected, dragging }: NodeProps) {
+  /* neighbors = how many compass directions are occupied at this point:
+     1 = free end, 2 = L-corner, 3 = T, 4 = X (four-way — nothing left to
+     drag out, so the dot never shows there). */
+  const { wallId, neighbors = 1 } = data as { wallId: string; neighbors?: number };
+
+  /* Fine-grained store subscriptions — only the handles belonging to the
+     hovered/selected wall re-render, instead of rebuilding the whole
+     node tree on every hover tick (which was the source of the flicker). */
+  const isHot = useFactoryStore(
+    (s) => s.hoveredWallId === wallId || s.selectedNodeId === wallId,
+  );
+  const isBranchDragging = useFactoryStore((s) => s.isBranchDragging);
+  const visible = isHot && neighbors < 4 && !(dragging && isBranchDragging);
 
   return (
     <div

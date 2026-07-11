@@ -28,7 +28,7 @@ export function RangeHistogram({ label, values, min, max, value, onChange, forma
     return arr.map(c => c / peak);
   }, [values, min, span]);
 
-  const pct = (v: number) => ((v - min) / span) * 100;
+  const pct = (v: number) => Math.max(0, Math.min(100, ((v - min) / span) * 100));
   // Native range thumbs are inset by half their width so they never clip outside
   // the input box; the CSS track must use the same inset or it visibly overshoots
   // the thumbs at the extremes.
@@ -96,8 +96,10 @@ export function RangeHistogram({ label, values, min, max, value, onChange, forma
           background: transparent;
           pointer-events: none;
         }
-        .rh-slider::-webkit-slider-runnable-track { background: transparent; }
-        .rh-slider::-moz-range-track { background: transparent; }
+        .rh-slider::-webkit-slider-runnable-track { background: transparent; border: none; box-shadow: none; height: 100%; }
+        .rh-slider::-moz-range-track { background: transparent; border: none; box-shadow: none; height: 100%; }
+        .rh-slider:focus { outline: none; }
+        .rh-slider::-moz-focus-outer { border: 0; }
         .rh-slider::-webkit-slider-thumb {
           -webkit-appearance: none;
           pointer-events: auto;

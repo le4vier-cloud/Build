@@ -2,13 +2,14 @@
 
 import type { NodeProps } from "@xyflow/react";
 import { useState } from "react";
+import { useFactoryStore } from "@/stores/useFactoryStore";
 import { WALL_CONFIG, type FactoryWall } from "@/types/factory";
 
 export function FactoryWallNode({ data, selected }: NodeProps) {
   const {
     wall, wallLength, angle,
     startRounded = true, endRounded = true,
-    isPreview = false, onHoverChange,
+    isPreview = false,
   } = data as {
     wall:       FactoryWall;
     wallLength: number;
@@ -16,12 +17,12 @@ export function FactoryWallNode({ data, selected }: NodeProps) {
     startRounded?: boolean;
     endRounded?:   boolean;
     isPreview?:    boolean;
-    onHoverChange?: (hovered: boolean) => void;
   };
 
   const config  = WALL_CONFIG[wall.wallType];
   const isWall  = wall.wallType === "wall";
   const [hov, setHov] = useState(false);
+  const setHoveredWallId = useFactoryStore((s) => s.setHoveredWallId);
 
   const wallBg = isWall
     ? "repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(255,255,255,0.07) 3px, rgba(255,255,255,0.07) 4px)"
@@ -40,17 +41,20 @@ export function FactoryWallNode({ data, selected }: NodeProps) {
   /* Per-end rounding — local x=0 (left, pre-rotation) is always the wall's
      start side and local x=wallLength (right) is always the end side,
      regardless of the segment's actual on-canvas orientation, since the
-     rotation is applied to the whole box afterwards. A capped end fully
-     rounds into a semicircle; a flat end stays square. */
-  const capR      = wall.thickness / 2;
-  const startR    = startRounded ? capR : 0;
-  const endR      = endRounded   ? capR : 0;
+     rotation is applied to the whole box afterwards. Free ends (no other
+     wall touching) fully round into a semicircle; ends that meet another
+     wall stay flat — a separate join-cap node draws the smooth outside
+     corner there instead, since two independently-bordered rectangles
+     can't blend into one seamless outline on their own. */
+  const capR   = wall.thickness / 2;
+  const startR = startRounded ? capR : 0;
+  const endR   = endRounded   ? capR : 0;
 
   return (
     /* Transparent AABB — the whole node's hit area */
     <div
-      onMouseEnter={() => { setHov(true); onHoverChange?.(true); }}
-      onMouseLeave={() => { setHov(false); onHoverChange?.(false); }}
+      onMouseEnter={() => { setHov(true); setHoveredWallId(wall.id); }}
+      onMouseLeave={() => { setHov(false); setHoveredWallId(null); }}
       style={{ width: "100%", height: "100%", position: "relative" }}
     >
       {/* Rotated capsule — the actual visual */}
@@ -79,7 +83,7 @@ export function FactoryWallNode({ data, selected }: NodeProps) {
             : isWall
               ? "0 1px 6px rgba(0,0,0,0.35)"
               : "none",
-          transition:      isPreview ? "none" : "border-color 0.15s, box-shadow 0.15s, border-radius 0.1s",
+          transition:      isPreview ? "none" : "border-color 0.15s, box-shadow 0.15s",
           cursor:          "default",
           userSelect:      "none",
           pointerEvents:   "none",
