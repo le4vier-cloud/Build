@@ -5,10 +5,18 @@ import { useState } from "react";
 import { WALL_CONFIG, type FactoryWall } from "@/types/factory";
 
 export function FactoryWallNode({ data, selected }: NodeProps) {
-  const { wall, wallLength, angle } = data as {
+  const {
+    wall, wallLength, angle,
+    startRounded = true, endRounded = true,
+    isPreview = false, onHoverChange,
+  } = data as {
     wall:       FactoryWall;
     wallLength: number;
     angle:      number;
+    startRounded?: boolean;
+    endRounded?:   boolean;
+    isPreview?:    boolean;
+    onHoverChange?: (hovered: boolean) => void;
   };
 
   const config  = WALL_CONFIG[wall.wallType];
@@ -29,11 +37,20 @@ export function FactoryWallNode({ data, selected }: NodeProps) {
   const borderType  = isWall || selected ? "solid" : "dashed";
   const angleDeg    = angle * (180 / Math.PI);
 
+  /* Per-end rounding — local x=0 (left, pre-rotation) is always the wall's
+     start side and local x=wallLength (right) is always the end side,
+     regardless of the segment's actual on-canvas orientation, since the
+     rotation is applied to the whole box afterwards. A capped end fully
+     rounds into a semicircle; a flat end stays square. */
+  const capR      = wall.thickness / 2;
+  const startR    = startRounded ? capR : 0;
+  const endR      = endRounded   ? capR : 0;
+
   return (
     /* Transparent AABB — the whole node's hit area */
     <div
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
+      onMouseEnter={() => { setHov(true); onHoverChange?.(true); }}
+      onMouseLeave={() => { setHov(false); onHoverChange?.(false); }}
       style={{ width: "100%", height: "100%", position: "relative" }}
     >
       {/* Rotated capsule — the actual visual */}
@@ -48,17 +65,21 @@ export function FactoryWallNode({ data, selected }: NodeProps) {
           backgroundColor: isWall ? "#3A3A3A" : "rgba(50,110,170,0.10)",
           backgroundImage: wallBg,
           border:          `${borderWidth} ${borderType} ${borderColor}`,
-          borderRadius:    "999px",
+          borderTopLeftRadius:     startR,
+          borderBottomLeftRadius:  startR,
+          borderTopRightRadius:    endR,
+          borderBottomRightRadius: endR,
           display:         "flex",
           alignItems:      "center",
           justifyContent:  "center",
           overflow:        "hidden",
+          opacity:         isPreview ? 0.4 : 1,
           boxShadow:       selected
             ? "0 0 0 1px #F56300, 0 0 14px rgba(245,99,0,0.18)"
             : isWall
               ? "0 1px 6px rgba(0,0,0,0.35)"
               : "none",
-          transition:      "border-color 0.15s, box-shadow 0.15s",
+          transition:      isPreview ? "none" : "border-color 0.15s, box-shadow 0.15s, border-radius 0.1s",
           cursor:          "default",
           userSelect:      "none",
           pointerEvents:   "none",

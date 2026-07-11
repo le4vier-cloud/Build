@@ -253,7 +253,7 @@ function FactoryCanvasInner({
   const { zoom } = useViewport();
 
   const {
-    zones, nodes: storeNodes, edges: storeEdges, walls, planAttachments,
+    zones, nodes: storeNodes, edges: storeEdges, walls, planAttachments, selectedNodeId,
     addZone, removeZone, batchMoveNodes, batchMoveWalls, setSelectedNode, addFlowPath,
     addWall, removeWall, updateWall,
   } = useFactoryStore();
@@ -269,6 +269,13 @@ function FactoryCanvasInner({
   const [ctxMenu, setCtxMenu] = useState<CtxMenuState | null>(null);
   const closeCtx = useCallback(() => setCtxMenu(null), []);
 
+  /* Which wall's hover state currently shows its green endpoint handles */
+  const [hoveredWallId, setHoveredWallId] = useState<string | null>(null);
+
+  /* Faint live preview of a branch segment while dragging an endpoint handle
+     sideways — cleared once the drag ends (committed or not). */
+  const [dragPreview, setDragPreview] = useState<FactoryWall | null>(null);
+
   useEffect(() => {
     if (!ctxMenu) return;
     const onDown = (e: PointerEvent) => {
@@ -281,6 +288,24 @@ function FactoryCanvasInner({
     window.addEventListener("keydown", onKey);
     return () => { window.removeEventListener("pointerdown", onDown); window.removeEventListener("keydown", onKey); };
   }, [ctxMenu]);
+
+  /* ── Junction classification ──────────────────────
+     For every wall endpoint, count how many OTHER wall endpoints share that
+     exact point. 0 → free end, 1 → L-corner, 2 → T, 3+ → X (four-way cross).
+     Corners/T's round; free ends round only for walkways (a capsule cap);
+     X junctions are always sharp since nothing is "outside" a 4-way meet. */
+  const pointKey = (p: { x: number; y: number }) => `${Math.round(p.x)}:${Math.round(p.y)}`;
+  const endpointCounts = new Map<string, number>();
+  walls.forEach((w) => {
+    endpointCounts.set(pointKey(w.start), (endpointCounts.get(pointKey(w.start)) ?? 0) + 1);
+    endpointCounts.set(pointKey(w.end),   (endpointCounts.get(pointKey(w.end))   ?? 0) + 1);
+  });
+  const neighborsAt = (p: { x: number; y: number }) => (endpointCounts.get(pointKey(p)) ?? 1) - 1;
+  const isRoundedEnd = (neighbors: number, isWall: boolean) => {
+    if (neighbors >= 3) return false;        // X — always sharp
+    if (neighbors === 0) return !isWall;      // free end — walkways cap, walls stay flat
+    return true;                              // L-corner or T — rounded outside
+  };
 
   /* ── Build ReactFlow nodes ── */
   const buildRfNodes = (): Node[] => [
@@ -296,12 +321,21 @@ function FactoryCanvasInner({
     }).filter(Boolean),
     ...walls.flatMap((w): Node[] => {
       const { len, angle, aabbW, aabbH, mid } = wallGeom(w);
+      const startNeighbors = neighborsAt(w.start);
+      const endNeighbors   = neighborsAt(w.end);
+      const isWall         = w.wallType === "wall";
+      const startRounded   = isRoundedEnd(startNeighbors, isWall);
+      const endRounded     = isRoundedEnd(endNeighbors, isWall);
+      const showHandles    = (hoveredWallId === w.id || selectedNodeId === w.id);
       return [
         /* Wall body node — AABB bounding box, inner div is CSS-rotated */
         {
           id: w.id, type: "factoryWall",
           position: { x: mid.x - aabbW / 2, y: mid.y - aabbH / 2 },
-          data: { wall: w, wallLength: len, angle },
+          data: {
+            wall: w, wallLength: len, angle, startRounded, endRounded,
+            onHoverChange: (h: boolean) => setHoveredWallId(h ? w.id : null),
+          },
           style: { width: aabbW, height: aabbH },
           selectable: true, draggable: true,
         } as Node,
@@ -309,7 +343,7 @@ function FactoryCanvasInner({
         {
           id: `wh-s-${w.id}`, type: "wallHandle",
           position: { x: w.start.x - 6, y: w.start.y - 6 },
-          data: { wallId: w.id, which: "start" },
+          data: { wallId: w.id, which: "start", visible: showHandles && startNeighbors < 3 },
           selectable: false, deletable: false,
           style: { width: 12, height: 12 },
         } as Node,
@@ -317,7 +351,7 @@ function FactoryCanvasInner({
         {
           id: `wh-e-${w.id}`, type: "wallHandle",
           position: { x: w.end.x - 6, y: w.end.y - 6 },
-          data: { wallId: w.id, which: "end" },
+          data: { wallId: w.id, which: "end", visible: showHandles && endNeighbors < 3 },
           selectable: false, deletable: false,
           style: { width: 12, height: 12 },
         } as Node,
@@ -397,7 +431,7 @@ function FactoryCanvasInner({
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState(buildRfNodes());
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState(buildRfEdges());
 
-  useEffect(() => { setRfNodes(buildRfNodes()); }, [storeNodes, zones, walls, planAttachments]);
+  useEffect(() => { setRfNodes(buildRfNodes()); }, [storeNodes, zones, walls, planAttachments, hoveredWallId, selectedNodeId]);
   useEffect(() => { setRfEdges(buildRfEdges()); }, [storeEdges, planAttachments, overlayPlans]);
   useEffect(() => { if (storeNodes.length > 0 || walls.length > 0) fitView({ padding: 0.2 }); }, []);
 
@@ -606,6 +640,55 @@ function FactoryCanvasInner({
     [addFlowPath],
   );
 
+  /* ── Shared handle-drag geometry — used live (preview) and on drop (commit) ──
+     Dragging along the wall's own axis repositions that endpoint; dragging
+     sideways past a one-grid-unit threshold branches a new perpendicular
+     wall off the original, unmoved endpoint instead. */
+  type HandleDragResult =
+    | { kind: "branch"; wall: Omit<FactoryWall, "id"> }
+    | { kind: "reposition"; wallId: string; isStart: boolean; newPt: { x: number; y: number } }
+    | null;
+
+  const computeHandleDragResult = useCallback((n: Node): HandleDragResult => {
+    const isStart = n.id.startsWith("wh-s-");
+    const wallId  = n.id.slice(5);
+    const w = walls.find((x) => x.id === wallId);
+    if (!w) return null;
+    const snap = (v: number) => Math.round(v / 20) * 20;
+    const draggedPt = { x: snap(n.position.x + 6), y: snap(n.position.y + 6) };
+    const origPt  = isStart ? w.start : w.end;
+    const otherPt = isStart ? w.end   : w.start;
+    const isHorizontal = w.start.y === w.end.y;
+
+    const alongDelta = isHorizontal ? draggedPt.x - origPt.x : draggedPt.y - origPt.y;
+    const perpDelta  = isHorizontal ? draggedPt.y - origPt.y : draggedPt.x - origPt.x;
+
+    if (Math.abs(perpDelta) >= 20 && Math.abs(perpDelta) > Math.abs(alongDelta)) {
+      const branchEnd = isHorizontal
+        ? { x: origPt.x, y: draggedPt.y }
+        : { x: draggedPt.x, y: origPt.y };
+      return { kind: "branch", wall: { wallType: w.wallType, start: { ...origPt }, end: branchEnd, thickness: w.thickness } };
+    }
+    const newPt = isHorizontal
+      ? { x: draggedPt.x, y: otherPt.y }
+      : { x: otherPt.x, y: draggedPt.y };
+    return { kind: "reposition", wallId, isStart, newPt };
+  }, [walls]);
+
+  /* ── Live drag — faint preview of a would-be branch segment ── */
+  const onNodeDrag = useCallback(
+    (_e: unknown, node: Node) => {
+      if (!(node.id.startsWith("wh-s-") || node.id.startsWith("wh-e-"))) return;
+      const result = computeHandleDragResult(node);
+      if (result?.kind === "branch") {
+        setDragPreview({ id: "__wall-preview__", ...result.wall });
+      } else {
+        setDragPreview((prev) => (prev ? null : prev));
+      }
+    },
+    [computeHandleDragResult],
+  );
+
   /* ── Drag stop — handles handle nodes, wall bodies, zone nodes separately ── */
   const onNodeDragStop = useCallback(
     (_e: unknown, _node: Node, draggedNodes: Node[]) => {
@@ -614,37 +697,10 @@ function FactoryCanvasInner({
 
       draggedNodes.forEach((n) => {
         if (n.id.startsWith("wh-s-") || n.id.startsWith("wh-e-")) {
-          /* Handle node drag → either reposition this endpoint (drag along the
-             wall's own axis) or branch off a new perpendicular segment (drag
-             sideways), so T-shapes and cross-shapes can be built from any end. */
-          const isStart = n.id.startsWith("wh-s-");
-          const wallId  = n.id.slice(5);
-          const w = walls.find((x) => x.id === wallId);
-          if (!w) return;
-          const snap = (v: number) => Math.round(v / 20) * 20;
-          const draggedPt = { x: snap(n.position.x + 6), y: snap(n.position.y + 6) };
-          const origPt  = isStart ? w.start : w.end;
-          const otherPt = isStart ? w.end   : w.start;
-          const isHorizontal = w.start.y === w.end.y;
-
-          const alongDelta = isHorizontal ? draggedPt.x - origPt.x : draggedPt.y - origPt.y;
-          const perpDelta  = isHorizontal ? draggedPt.y - origPt.y : draggedPt.x - origPt.x;
-
-          if (Math.abs(perpDelta) >= 20 && Math.abs(perpDelta) > Math.abs(alongDelta)) {
-            /* Branch: spawn a new perpendicular wall from the original,
-               unmoved endpoint — the dragged endpoint snaps back in place. */
-            const branchEnd = isHorizontal
-              ? { x: origPt.x, y: draggedPt.y }
-              : { x: draggedPt.x, y: origPt.y };
-            addWall({ wallType: w.wallType, start: { ...origPt }, end: branchEnd, thickness: w.thickness });
-          } else {
-            /* Reposition: keep the wall perfectly axis-aligned by locking
-               the perpendicular coordinate to the other endpoint's. */
-            const newPt = isHorizontal
-              ? { x: draggedPt.x, y: otherPt.y }
-              : { x: otherPt.x, y: draggedPt.y };
-            updateWall(wallId, isStart ? { start: newPt } : { end: newPt });
-          }
+          const result = computeHandleDragResult(n);
+          if (!result) return;
+          if (result.kind === "branch") addWall(result.wall);
+          else updateWall(result.wallId, result.isStart ? { start: result.newPt } : { end: result.newPt });
         } else {
           const w = walls.find((x) => x.id === n.id);
           if (w) {
@@ -671,8 +727,9 @@ function FactoryCanvasInner({
 
       if (zoneMoves.length      > 0) batchMoveNodes(zoneMoves);
       if (wallBodyDeltas.length > 0) batchMoveWalls(wallBodyDeltas);
+      setDragPreview(null);
     },
-    [batchMoveNodes, batchMoveWalls, walls, updateWall, addWall],
+    [batchMoveNodes, batchMoveWalls, walls, updateWall, addWall, computeHandleDragResult],
   );
 
   const onNodeClick = useCallback(
@@ -863,12 +920,27 @@ function FactoryCanvasInner({
     return { position: "fixed", left, top, width: W, zIndex: 1000, maxHeight: "80vh", overflowY: "auto" };
   };
 
+  /* Faint ghost of the branch a sideways handle-drag would create — merged
+     in at render time only, never persisted into rfNodes/the store. */
+  const displayNodes = dragPreview
+    ? [...rfNodes, (() => {
+        const { len, angle, aabbW, aabbH, mid } = wallGeom(dragPreview);
+        return {
+          id: "wall-preview", type: "factoryWall",
+          position: { x: mid.x - aabbW / 2, y: mid.y - aabbH / 2 },
+          data: { wall: dragPreview, wallLength: len, angle, startRounded: true, endRounded: true, isPreview: true },
+          style: { width: aabbW, height: aabbH },
+          selectable: false, draggable: false,
+        } as Node;
+      })()]
+    : rfNodes;
+
   return (
     <div style={{ width: "100%", height: "100%", cursor: cursorStyle }} onMouseMove={onMouseMove}>
       <ReactFlow
-        nodes={rfNodes} edges={rfEdges} nodeTypes={nodeTypes}
+        nodes={displayNodes} edges={rfEdges} nodeTypes={nodeTypes}
         onNodesChange={handleNodesChange} onEdgesChange={onEdgesChange}
-        onConnect={onConnect} onNodeDragStop={onNodeDragStop}
+        onConnect={onConnect} onNodeDrag={onNodeDrag} onNodeDragStop={onNodeDragStop}
         onNodeClick={onNodeClick} onPaneClick={onPaneClick}
         onNodeContextMenu={onNodeContextMenu} onPaneContextMenu={onPaneContextMenu}
         snapGrid={[20, 20]} snapToGrid fitView
