@@ -801,8 +801,21 @@ function FactoryCanvasInner({
                 if (x.id === w.id) return;
                 const startTouches = pointsEqual(x.start, oldStart) || pointsEqual(x.start, oldEnd) || onWallBody(w, x.start);
                 const endTouches   = pointsEqual(x.end,   oldStart) || pointsEqual(x.end,   oldEnd) || onWallBody(w, x.end);
-                if (startTouches) addPatch(x.id, { start: { x: x.start.x + dx, y: x.start.y + dy } });
-                if (endTouches)   addPatch(x.id, { end:   { x: x.end.x   + dx, y: x.end.y   + dy } });
+                if (!startTouches && !endTouches) return;
+                /* Only ever move the touching endpoint ALONG x's own axis
+                   (extend/shrink it) — applying the delta's component
+                   perpendicular to x's axis would drag that one endpoint
+                   off x's line while the far endpoint stays put, tilting
+                   the whole wall off the 90° grid. */
+                const xIsHorizontal = x.start.y === x.end.y;
+                const along = xIsHorizontal ? dx : dy;
+                if (along === 0) return;
+                if (startTouches) {
+                  addPatch(x.id, { start: xIsHorizontal ? { x: x.start.x + along, y: x.start.y } : { x: x.start.x, y: x.start.y + along } });
+                }
+                if (endTouches) {
+                  addPatch(x.id, { end: xIsHorizontal ? { x: x.end.x + along, y: x.end.y } : { x: x.end.x, y: x.end.y + along } });
+                }
               });
             }
           } else {

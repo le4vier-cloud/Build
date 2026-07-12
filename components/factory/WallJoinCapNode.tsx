@@ -42,7 +42,7 @@ export function WallJoinCapNode({ data }: NodeProps) {
     <div
       style={{
         width: "100%", height: "100%",
-        backgroundColor: isWall ? "#3A3A3A" : "rgba(50,110,170,0.10)",
+        backgroundColor: isWall ? "#3A3A3A" : "#1F3245",
         borderTop:    side(free("up")),
         borderBottom: side(free("down")),
         borderLeft:   side(free("left")),

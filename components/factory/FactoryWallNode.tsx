@@ -69,7 +69,7 @@ export function FactoryWallNode({ data, selected }: NodeProps) {
           width:           wallLength,
           height:          wall.thickness,
           transform:       `translate(-50%, -50%) rotate(${angleDeg}deg)`,
-          backgroundColor: isWall ? "#3A3A3A" : "rgba(50,110,170,0.10)",
+          backgroundColor: isWall ? "#3A3A3A" : "#1F3245",
           backgroundImage: wallBg,
           border:          `${borderWidth} ${borderType} ${borderColor}`,
           borderTopLeftRadius:     startR,
