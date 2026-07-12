@@ -28,9 +28,10 @@ export function WallJoinCapNode({ data }: NodeProps) {
   const free = (d: Dir) => !occupied.includes(d);
   const capR = thickness / 2;
 
-  const wallBg = isWall
-    ? "repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(255,255,255,0.07) 3px, rgba(255,255,255,0.07) 4px)"
-    : "repeating-linear-gradient(-45deg, transparent, transparent 10px, rgba(60,120,200,0.07) 10px, rgba(60,120,200,0.07) 11px)";
+  /* Deliberately no hatch backgroundImage here: repeating-linear-gradient
+     tiles from each element's own top-left corner, so the cap's pattern
+     never lines up with the wall body's identical-looking one sitting
+     right next to it — a flat fill avoids that seam entirely. */
   const borderColor = isHot
     ? (isWall ? "#646464" : "#5A9FD4")
     : (isWall ? "#484848" : "#3A78B0");
@@ -42,7 +43,6 @@ export function WallJoinCapNode({ data }: NodeProps) {
       style={{
         width: "100%", height: "100%",
         backgroundColor: isWall ? "#3A3A3A" : "rgba(50,110,170,0.10)",
-        backgroundImage: wallBg,
         borderTop:    side(free("up")),
         borderBottom: side(free("down")),
         borderLeft:   side(free("left")),
