@@ -262,7 +262,7 @@ function FactoryCanvasInner({
   const {
     zones, nodes: storeNodes, edges: storeEdges, walls, planAttachments,
     addZone, removeZone, batchMoveNodes, batchPatchWalls, setSelectedNode, addFlowPath,
-    addWall, removeWall, updateWall, setIsBranchDragging,
+    addWall, removeWall, updateWall,
   } = useFactoryStore();
 
   const { plans: overlayPlans } = usePlanOverlayStore();
@@ -735,20 +735,29 @@ function FactoryCanvasInner({
     return { kind: "reposition", wallId, isStart, newPt };
   }, [walls]);
 
-  /* ── Live drag — faint preview of a would-be branch segment ── */
+  /* ── Live drag — faint preview of the wall a handle-drag would produce,
+     either a new branch segment or the same wall stretched to follow the
+     drag. The dragged dot itself hides (see WallHandleNode's `dragging`
+     prop, driven directly by ReactFlow with no extra state to desync)
+     so the preview is the only thing tracking the cursor. */
   const onNodeDrag = useCallback(
     (_e: unknown, node: Node) => {
       if (!(node.id.startsWith("wh-s-") || node.id.startsWith("wh-e-"))) return;
       const result = computeHandleDragResult(node);
-      if (result?.kind === "branch") {
+      if (!result) { setDragPreview(null); return; }
+      if (result.kind === "branch") {
         setDragPreview({ id: "__wall-preview__", ...result.wall });
-        setIsBranchDragging(true);
       } else {
-        setDragPreview((prev) => (prev ? null : prev));
-        setIsBranchDragging(false);
+        const w = walls.find((x) => x.id === result.wallId);
+        if (!w) { setDragPreview(null); return; }
+        setDragPreview({
+          ...w,
+          start: result.isStart ? result.newPt : w.start,
+          end:   result.isStart ? w.end        : result.newPt,
+        });
       }
     },
-    [computeHandleDragResult, setIsBranchDragging],
+    [computeHandleDragResult, walls],
   );
 
   /* ── Drag stop — handles handle nodes, wall bodies, zone nodes separately ── */
@@ -812,9 +821,8 @@ function FactoryCanvasInner({
         batchPatchWalls([...wallPatchMap.entries()].map(([id, patch]) => ({ id, ...patch })));
       }
       setDragPreview(null);
-      setIsBranchDragging(false);
     },
-    [batchMoveNodes, batchPatchWalls, walls, updateWall, addWall, computeHandleDragResult, setIsBranchDragging],
+    [batchMoveNodes, batchPatchWalls, walls, updateWall, addWall, computeHandleDragResult],
   );
 
   const onNodeClick = useCallback(

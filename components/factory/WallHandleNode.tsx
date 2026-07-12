@@ -23,8 +23,7 @@ export function WallHandleNode({ data, selected, dragging }: NodeProps) {
     (s) => s.hoveredWallId === wallId || s.selectedNodeId === wallId,
   );
   const setHoveredWallId = useFactoryStore((s) => s.setHoveredWallId);
-  const isBranchDragging = useFactoryStore((s) => s.isBranchDragging);
-  const visible = isHot && draggable && !(dragging && isBranchDragging);
+  const visible = isHot && draggable && !dragging;
 
   return (
     <div
