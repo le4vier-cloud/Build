@@ -744,6 +744,8 @@ function FactoryCanvasInner({
     (_e: unknown, node: Node) => {
       if (!(node.id.startsWith("wh-s-") || node.id.startsWith("wh-e-"))) return;
       const result = computeHandleDragResult(node);
+      // eslint-disable-next-line no-console
+      console.debug("[wall-drag]", { nodeId: node.id, position: node.position, result });
       if (!result) { setDragPreview(null); return; }
       if (result.kind === "branch") {
         setDragPreview({ id: "__wall-preview__", ...result.wall });
