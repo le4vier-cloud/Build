@@ -1015,20 +1015,30 @@ function FactoryCanvasInner({
     return { position: "fixed", left, top, width: W, zIndex: 1000, maxHeight: "80vh", overflowY: "auto" };
   };
 
-  /* Faint ghost of the branch a sideways handle-drag would create — merged
-     in at render time only, never persisted into rfNodes/the store. */
-  const displayNodes = dragPreview
-    ? [...rfNodes, (() => {
-        const { len, angle, aabbW, aabbH, mid } = wallGeom(dragPreview);
-        return {
-          id: "wall-preview", type: "factoryWall",
-          position: { x: mid.x - aabbW / 2, y: mid.y - aabbH / 2 },
-          data: { wall: dragPreview, wallLength: len, angle, startRounded: true, endRounded: true, isPreview: true },
-          style: { width: aabbW, height: aabbH },
-          selectable: false, draggable: false,
-        } as Node;
-      })()]
-    : rfNodes;
+  /* Faint ghost of the branch/reposition a handle-drag would produce —
+     merged in at render time only, never persisted into rfNodes/the store.
+     This node is ALWAYS present in the array (just hidden via data.hidden
+     when there's no active preview) rather than being added/removed as
+     dragPreview toggles: growing or shrinking the nodes array while
+     ReactFlow is mid-drag confuses its internal drag tracking, which
+     looked like the preview silently never rendering during a real drag. */
+  const previewGeom = dragPreview ? wallGeom(dragPreview) : null;
+  const previewNode: Node = {
+    id: "wall-preview", type: "factoryWall",
+    position: previewGeom
+      ? { x: previewGeom.mid.x - previewGeom.aabbW / 2, y: previewGeom.mid.y - previewGeom.aabbH / 2 }
+      : { x: 0, y: 0 },
+    data: {
+      wall: dragPreview ?? { id: "wall-preview", wallType: "wall", start: { x: 0, y: 0 }, end: { x: 0, y: 0 }, thickness: 1 },
+      wallLength: previewGeom?.len ?? 1,
+      angle: previewGeom?.angle ?? 0,
+      startRounded: true, endRounded: true,
+      isPreview: true, hidden: !dragPreview,
+    },
+    style: { width: previewGeom?.aabbW ?? 1, height: previewGeom?.aabbH ?? 1 },
+    selectable: false, draggable: false,
+  };
+  const displayNodes = [...rfNodes, previewNode];
 
   return (
     <div style={{ width: "100%", height: "100%", cursor: cursorStyle }} onMouseMove={onMouseMove}>

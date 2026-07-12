@@ -9,7 +9,7 @@ export function FactoryWallNode({ data, selected }: NodeProps) {
   const {
     wall, wallLength, angle,
     startRounded = true, endRounded = true,
-    isPreview = false,
+    isPreview = false, hidden = false,
   } = data as {
     wall:       FactoryWall;
     wallLength: number;
@@ -17,12 +17,15 @@ export function FactoryWallNode({ data, selected }: NodeProps) {
     startRounded?: boolean;
     endRounded?:   boolean;
     isPreview?:    boolean;
+    hidden?:       boolean;
   };
 
   const config  = WALL_CONFIG[wall.wallType];
   const isWall  = wall.wallType === "wall";
   const [hov, setHov] = useState(false);
   const setHoveredWallId = useFactoryStore((s) => s.setHoveredWallId);
+
+  if (hidden) return null;
 
   const wallBg = isWall
     ? "repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(255,255,255,0.07) 3px, rgba(255,255,255,0.07) 4px)"
