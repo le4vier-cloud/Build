@@ -280,6 +280,12 @@ function FactoryCanvasInner({
      sideways — cleared once the drag ends (committed or not). */
   const [dragPreview, setDragPreview] = useState<FactoryWall | null>(null);
 
+  /* New wall/walkway placement — first click pins the start point (instead
+     of immediately dropping a fixed-length segment), then the pointer's
+     current position becomes a live skeleton up to the second click, which
+     commits the actual wall. */
+  const [newWallStart, setNewWallStart] = useState<{ x: number; y: number } | null>(null);
+
   useEffect(() => {
     if (!ctxMenu) return;
     const onDown = (e: PointerEvent) => {
@@ -494,6 +500,9 @@ function FactoryCanvasInner({
   useEffect(() => { setRfNodes(buildRfNodes()); }, [storeNodes, zones, walls, planAttachments]);
   useEffect(() => { setRfEdges(buildRfEdges()); }, [storeEdges, planAttachments, overlayPlans]);
   useEffect(() => { if (storeNodes.length > 0 || walls.length > 0) fitView({ padding: 0.2 }); }, []);
+  /* Switching tools (toolbar click, not just Escape) cancels any pending
+     wall/walkway placement so a half-pinned segment never lingers. */
+  useEffect(() => { setNewWallStart(null); setDragPreview(null); }, [toolMode]);
 
   /* ── Node change handler — guard handle nodes from deletion ── */
   const handleNodesChange = useCallback(
@@ -673,6 +682,7 @@ function FactoryCanvasInner({
       if (!cmd) {
         if (e.key === "v" || e.key === "V" || e.key === "Escape") {
           onToolModeChange("select"); onAddZoneTypeChange(null);
+          setNewWallStart(null); setDragPreview(null);
         }
         if (editMode) {
           if (e.key === "s" || e.key === "S") onOpenAddZoneDialog();
@@ -744,8 +754,6 @@ function FactoryCanvasInner({
     (_e: unknown, node: Node) => {
       if (!(node.id.startsWith("wh-s-") || node.id.startsWith("wh-e-"))) return;
       const result = computeHandleDragResult(node);
-      // eslint-disable-next-line no-console
-      console.debug("[wall-drag]", { nodeId: node.id, position: node.position, result });
       if (!result) { setDragPreview(null); return; }
       if (result.kind === "branch") {
         setDragPreview({ id: "__wall-preview__", ...result.wall });
@@ -903,30 +911,54 @@ function FactoryCanvasInner({
         addZone({ name: `New ${ZONE_LABELS[addZoneType]}`, type: addZoneType }, pos);
         onAddZoneTypeUsed();
       } else if (editMode && (toolMode === "wall" || toolMode === "walkway")) {
-        const raw    = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-        const gx     = Math.round(raw.x / 20) * 20;
-        const gy     = Math.round(raw.y / 20) * 20;
-        const cfg    = WALL_CONFIG[toolMode as WallType];
-        const halfL  = cfg.defaultLength / 2;
-        addWall({
-          wallType:  toolMode as WallType,
-          start:     { x: gx - halfL, y: gy },
-          end:       { x: gx + halfL, y: gy },
-          thickness: cfg.defaultThickness,
-        });
+        const raw = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+        const gx  = Math.round(raw.x / 20) * 20;
+        const gy  = Math.round(raw.y / 20) * 20;
+        if (!newWallStart) {
+          /* First click — pin the start point, don't place anything yet. */
+          setNewWallStart({ x: gx, y: gy });
+          return;
+        }
+        /* Second click — commit from the pinned start to here, locked to
+           whichever axis the pointer moved further along so it always
+           lands perfectly horizontal or vertical. */
+        const cfg = WALL_CONFIG[toolMode as WallType];
+        const dxAbs = Math.abs(gx - newWallStart.x), dyAbs = Math.abs(gy - newWallStart.y);
+        const end = dxAbs >= dyAbs ? { x: gx, y: newWallStart.y } : { x: newWallStart.x, y: gy };
+        if (end.x !== newWallStart.x || end.y !== newWallStart.y) {
+          addWall({ wallType: toolMode as WallType, start: newWallStart, end, thickness: cfg.defaultThickness });
+        }
+        setNewWallStart(null);
+        setDragPreview(null);
       } else {
         setSelectedNode(null);
       }
     },
-    [editMode, toolMode, addZoneType, addZone, onAddZoneTypeUsed, setSelectedNode, screenToFlowPosition, addWall],
+    [editMode, toolMode, addZoneType, addZone, onAddZoneTypeUsed, setSelectedNode, screenToFlowPosition, addWall, newWallStart],
   );
 
   const onMouseMove = useCallback(
     (event: React.MouseEvent) => {
       const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      const gx  = Math.round(pos.x / 20) * 20;
+      const gy  = Math.round(pos.y / 20) * 20;
       onMousePosChange(Math.round(pos.x / 20), Math.round(pos.y / 20));
+
+      if (newWallStart && (toolMode === "wall" || toolMode === "walkway")) {
+        /* Skeleton follows the pointer, snapped to whichever axis it's
+           moved further along from the pinned start — same axis-lock the
+           committed wall will get, so what you see is what you'll place. */
+        const cfg   = WALL_CONFIG[toolMode as WallType];
+        const dxAbs = Math.abs(gx - newWallStart.x), dyAbs = Math.abs(gy - newWallStart.y);
+        const end   = dxAbs >= dyAbs ? { x: gx, y: newWallStart.y } : { x: newWallStart.x, y: gy };
+        setDragPreview(
+          end.x === newWallStart.x && end.y === newWallStart.y
+            ? null
+            : { id: "__new-wall-preview__", wallType: toolMode as WallType, start: newWallStart, end, thickness: cfg.defaultThickness },
+        );
+      }
     },
-    [screenToFlowPosition, onMousePosChange],
+    [screenToFlowPosition, onMousePosChange, newWallStart, toolMode],
   );
 
   const cursorStyle =
@@ -1053,6 +1085,8 @@ function FactoryCanvasInner({
      ReactFlow is mid-drag confuses its internal drag tracking, which
      looked like the preview silently never rendering during a real drag. */
   const previewGeom = dragPreview ? wallGeom(dragPreview) : null;
+  const previewW = previewGeom?.aabbW ?? 1;
+  const previewH = previewGeom?.aabbH ?? 1;
   const previewNode: Node = {
     id: "wall-preview", type: "factoryWall",
     position: previewGeom
@@ -1065,7 +1099,13 @@ function FactoryCanvasInner({
       startRounded: true, endRounded: true,
       isPreview: true, hidden: !dragPreview,
     },
-    style: { width: previewGeom?.aabbW ?? 1, height: previewGeom?.aabbH ?? 1 },
+    /* Top-level width/height (not just style) tell ReactFlow this node's
+       size is already known — this node lives outside the rfNodes state
+       (re-added fresh via displayNodes' spread every render, never round-
+       tripped through onNodesChange), so its dimension-measurement never
+       completes and it sits permanently at visibility:hidden without this. */
+    width: previewW, height: previewH,
+    style: { width: previewW, height: previewH },
     selectable: false, draggable: false,
   };
   const displayNodes = [...rfNodes, previewNode];
