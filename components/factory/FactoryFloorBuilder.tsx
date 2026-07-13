@@ -772,6 +772,20 @@ function FactoryCanvasInner({
       const pointsEqual = (a: { x: number; y: number }, b: { x: number; y: number }) =>
         Math.round(a.x) === Math.round(b.x) && Math.round(a.y) === Math.round(b.y);
 
+      /* Walls being directly dragged (multi-selected and moved as a group)
+         always get a clean full rigid translate of their own — connected-
+         joint propagation below must skip these entirely, or a wall that's
+         BOTH directly dragged AND touching another dragged wall would get
+         its own full translate patch fought over by an along-axis-only
+         patch from the propagation pass, producing the exact "meshed up"
+         skewed result this was reported as. */
+      const directlyDraggedWallIds = new Set(
+        draggedNodes
+          .filter((n) => !n.id.startsWith("wh-s-") && !n.id.startsWith("wh-e-"))
+          .map((n) => n.id)
+          .filter((id) => walls.some((w) => w.id === id)),
+      );
+
       draggedNodes.forEach((n) => {
         if (n.id.startsWith("wh-s-") || n.id.startsWith("wh-e-")) {
           const result = computeHandleDragResult(n);
@@ -784,7 +798,10 @@ function FactoryCanvasInner({
             /* Wall body drag → translate both endpoints, and carry along
                any OTHER wall whose endpoint was touching this one (at a
                shared corner, or T-ing into its side) so the joint stays
-               connected instead of tearing apart. */
+               connected instead of tearing apart — UNLESS that other wall
+               is also being directly dragged right now, in which case it
+               already gets its own full translate below and must be left
+               alone here. */
             const { aabbW, aabbH, mid } = wallGeom(w);
             const newMidX = n.position.x + aabbW / 2;
             const newMidY = n.position.y + aabbH / 2;
@@ -798,7 +815,7 @@ function FactoryCanvasInner({
                 end:   { x: oldEnd.x   + dx, y: oldEnd.y   + dy },
               });
               walls.forEach((x) => {
-                if (x.id === w.id) return;
+                if (x.id === w.id || directlyDraggedWallIds.has(x.id)) return;
                 const startTouches = pointsEqual(x.start, oldStart) || pointsEqual(x.start, oldEnd) || onWallBody(w, x.start);
                 const endTouches   = pointsEqual(x.end,   oldStart) || pointsEqual(x.end,   oldEnd) || onWallBody(w, x.end);
                 if (!startTouches && !endTouches) return;
