@@ -824,23 +824,43 @@ function FactoryCanvasInner({
               });
               walls.forEach((x) => {
                 if (x.id === w.id || directlyDraggedWallIds.has(x.id)) return;
-                const startTouches = pointsEqual(x.start, oldStart) || pointsEqual(x.start, oldEnd) || onWallBody(w, x.start);
-                const endTouches   = pointsEqual(x.end,   oldStart) || pointsEqual(x.end,   oldEnd) || onWallBody(w, x.end);
-                if (!startTouches && !endTouches) return;
-                /* Only ever move the touching endpoint ALONG x's own axis
-                   (extend/shrink it) — applying the delta's component
-                   perpendicular to x's axis would drag that one endpoint
-                   off x's line while the far endpoint stays put, tilting
-                   the whole wall off the 90° grid. */
                 const xIsHorizontal = x.start.y === x.end.y;
-                const along = xIsHorizontal ? dx : dy;
-                if (along === 0) return;
-                if (startTouches) {
-                  addPatch(x.id, { start: xIsHorizontal ? { x: x.start.x + along, y: x.start.y } : { x: x.start.x, y: x.start.y + along } });
+                /* alongXaxis extends/shrinks x from a touching endpoint;
+                   alongCross is the other, perpendicular component. */
+                const alongXaxis = xIsHorizontal ? dx : dy;
+                const alongCross = xIsHorizontal ? dy : dx;
+
+                const startCorner = pointsEqual(x.start, oldStart) || pointsEqual(x.start, oldEnd);
+                const endCorner   = pointsEqual(x.end,   oldStart) || pointsEqual(x.end,   oldEnd);
+                const startBody   = !startCorner && onWallBody(w, x.start);
+                const endBody     = !endCorner && onWallBody(w, x.end);
+                if (!startCorner && !endCorner && !startBody && !endBody) return;
+
+                /* A body touch means x branches perpendicular off w's
+                   interior — sliding w along its own length must carry x's
+                   whole body sideways with it (a rigid cross-axis shift on
+                   BOTH endpoints), on top of extending/shrinking x from
+                   whichever endpoint is the actual touch point. A corner
+                   touch only ever gets the along-axis extend/shrink —
+                   applying the cross component there would tilt x's
+                   unrelated far end off the 90° grid (this is the wall-
+                   skew bug already fixed once; a body touch needs both
+                   components, a corner touch only the one). */
+                let newStart = x.start, newEnd = x.end;
+                if ((startBody || endBody) && alongCross !== 0) {
+                  const shift = (p: { x: number; y: number }) =>
+                    xIsHorizontal ? { x: p.x, y: p.y + alongCross } : { x: p.x + alongCross, y: p.y };
+                  newStart = shift(newStart);
+                  newEnd   = shift(newEnd);
                 }
-                if (endTouches) {
-                  addPatch(x.id, { end: xIsHorizontal ? { x: x.end.x + along, y: x.end.y } : { x: x.end.x, y: x.end.y + along } });
+                if ((startCorner || startBody) && alongXaxis !== 0) {
+                  newStart = xIsHorizontal ? { x: newStart.x + alongXaxis, y: newStart.y } : { x: newStart.x, y: newStart.y + alongXaxis };
                 }
+                if ((endCorner || endBody) && alongXaxis !== 0) {
+                  newEnd = xIsHorizontal ? { x: newEnd.x + alongXaxis, y: newEnd.y } : { x: newEnd.x, y: newEnd.y + alongXaxis };
+                }
+                if (newStart !== x.start) addPatch(x.id, { start: newStart });
+                if (newEnd !== x.end) addPatch(x.id, { end: newEnd });
               });
             }
           } else {
@@ -1661,7 +1681,7 @@ export function FactoryFloorBuilder({
   useEffect(() => {
     if (!showShortcuts) return;
     const onPointerDown = (e: MouseEvent) => {
-      if (!shortcutsRef.current?.contains(e.target as Node)) setShowShortcuts(false);
+      if (!shortcutsRef.current?.contains(e.target as globalThis.Node)) setShowShortcuts(false);
     };
     document.addEventListener("mousedown", onPointerDown);
     return () => document.removeEventListener("mousedown", onPointerDown);
