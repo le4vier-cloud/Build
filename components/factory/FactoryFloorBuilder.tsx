@@ -1652,10 +1652,20 @@ export function FactoryFloorBuilder({
   const [showPlans,     setShowPlans]     = useState(false);
   const [panelWidth,    setPanelWidth]    = useState(240);
   const containerRef = useRef<HTMLDivElement>(null);
+  const shortcutsRef  = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!editMode) { setToolMode("select"); setAddZoneType(null); }
   }, [editMode]);
+
+  useEffect(() => {
+    if (!showShortcuts) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (!shortcutsRef.current?.contains(e.target as Node)) setShowShortcuts(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [showShortcuts]);
 
   const { zones, nodes, walls, clearFloor, undo, canUndo } = useFactoryStore();
 
@@ -1772,8 +1782,7 @@ export function FactoryFloorBuilder({
           {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
         </button>
 
-        {showShortcuts && <div style={{ position: "fixed", inset: 0, zIndex: 499 }} onClick={() => setShowShortcuts(false)} />}
-        <div style={{ position: "relative" }}>
+        <div ref={shortcutsRef} style={{ position: "relative" }}>
           <button onClick={() => setShowShortcuts((s) => !s)} title="Keyboard Shortcuts" style={{ ...hBtnGhost, backgroundColor: showShortcuts ? t.toolHover : "transparent", color: showShortcuts ? t.textPrimary : t.textMuted }}>
             <Keyboard size={13} />
           </button>
