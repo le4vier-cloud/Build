@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   Box, Wrench, Users, Truck,
   GitBranch, CircleUser, FileText, ShoppingBag,
-  SlidersHorizontal, LogOut, UserRound,
+  SlidersHorizontal, LogOut, UserRound, HardHat,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -21,8 +21,9 @@ const NAV_ITEMS = [
 ];
 
 const BOTTOM_ITEMS = [
-  { href: "/settings", icon: SlidersHorizontal, label: "Settings" },
-  { href: "/profile",  icon: UserRound,          label: "Profile" },
+  { href: "/floor",     icon: HardHat,            label: "Factory Floor" },
+  { href: "/settings",  icon: SlidersHorizontal,  label: "Settings" },
+  { href: "/profile",   icon: UserRound,          label: "Profile" },
 ];
 
 interface Tooltip { label: string; y: number }

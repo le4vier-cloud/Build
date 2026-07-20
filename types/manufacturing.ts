@@ -1,11 +1,21 @@
 /* ── Core entities ─────────────────────────────────── */
 
+export interface TaskFile {
+  id: string;
+  name: string;
+  kind: "sop" | "drawing" | "program" | "other";
+  size: string; // e.g. "1.2 MB" — display only, no real storage
+}
+
 export interface Task {
   id: string;
   name: string;
   duration: number; // minutes
   optionSet: "machine" | "human";
   workflowId?: string;
+  sop?: string;        // step-by-step instructions shown on the floor
+  files?: TaskFile[];  // SOPs, machining programs, drawings
+  machineName?: string; // only meaningful when optionSet === "machine"
 }
 
 export interface Workflow {
