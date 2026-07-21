@@ -29,11 +29,15 @@ interface FloorStore {
   completeTask: () => void;
 }
 
+/* Ids match StaffMember records in app/(dashboard)/staff/page.tsx (MOCK_STAFF,
+   ids "4"-"7") so a completed TaskLog's workerId can be cross-referenced
+   directly against a real staff record for the Staff page's task-history
+   analytics — these are the same people, not a second disconnected roster. */
 const MOCK_OPERATORS: Operator[] = [
-  { id: "op1", name: "Thabo Nkosi",     role: "Machine Operator", color: "#F56300" },
-  { id: "op2", name: "Sarah van Wyk",   role: "Assembly",         color: "#2563EB" },
-  { id: "op3", name: "Sipho Dlamini",   role: "Machine Operator", color: "#059669" },
-  { id: "op4", name: "Amanda Botha",    role: "QC & Finishing",   color: "#7C3AED" },
+  { id: "4", name: "Thabo Nkosi",     role: "Machine Operator", color: "#F56300" },
+  { id: "5", name: "Sarah van Wyk",   role: "Assembly",         color: "#2563EB" },
+  { id: "6", name: "Sipho Dlamini",   role: "Machine Operator", color: "#059669" },
+  { id: "7", name: "Amanda Botha",    role: "QC & Finishing",   color: "#7C3AED" },
 ];
 
 export const useFloorStore = create<FloorStore>((set, get) => ({

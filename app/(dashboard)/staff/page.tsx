@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, Fragment } from "react";
+import { useState, useMemo, Fragment } from "react";
 import {
   Users, Timer, CalendarDays,
   CreditCard, Fingerprint, ScanFace, KeyRound, QrCode, Wifi, Scan,
   LogIn, LogOut, Coffee, RotateCcw, Info,
   ChevronDown, ChevronUp, X, Plus,
-  Pencil, Trash2, SlidersHorizontal,
+  Pencil, Trash2, SlidersHorizontal, History,
 } from "lucide-react";
 import { ModuleLayout } from "@/components/ui/module-layout";
 import { RightPanel } from "@/components/ui/right-panel";
@@ -17,6 +17,8 @@ import { SelectCheckbox } from "@/components/ui/select-checkbox";
 import { RowActions } from "@/components/ui/row-actions";
 import { BulkActionBar } from "@/components/ui/bulk-action-bar";
 import { exportToCsv } from "@/lib/csv-export";
+import { useFloorStore } from "@/stores/useFloorStore";
+import { useManufacturingStore } from "@/stores/useManufacturingStore";
 import type {
   HardwareAuthType, HardwareCredential, ClockEvent, Shift, StaffMember,
   ClockEventType, ShiftStatus, StaffRole,
@@ -52,6 +54,10 @@ const SHIFT_STATUS_CFG: Record<ShiftStatus, { label: string; color: string }> = 
 };
 
 /* ── Mock data ────────────────────────────────────────────────────── */
+/* Ids "4"-"7" match the Operator ids in stores/useFloorStore.ts — these are
+   the floor workers who actually clock in and complete tasks on /floor, so
+   their StaffTaskHistory below can read useFloorStore's logs directly by
+   staff id instead of a second, disconnected roster. */
 const MOCK_STAFF: StaffMember[] = [
   { id: "1", org_id: "org1", name: "Jane Smith",  email: "jane@company.com",
     hourly_wage: 85, user_role: "back_end",  staff_role_ids: [],
@@ -62,6 +68,18 @@ const MOCK_STAFF: StaffMember[] = [
   { id: "3", org_id: "org1", name: "Sara Botha",  email: "sara@company.com",
     hourly_wage: 72, user_role: "front_end", staff_role_ids: [],
     is_active: false, created_at: "2026-03-01T10:00:00Z" },
+  { id: "4", org_id: "org1", name: "Thabo Nkosi",   email: "thabo@company.com",
+    hourly_wage: 65, user_role: "front_end", staff_role_ids: [],
+    is_active: true,  created_at: "2026-01-20T08:00:00Z" },
+  { id: "5", org_id: "org1", name: "Sarah van Wyk", email: "sarah.vw@company.com",
+    hourly_wage: 70, user_role: "front_end", staff_role_ids: [],
+    is_active: true,  created_at: "2026-01-20T08:00:00Z" },
+  { id: "6", org_id: "org1", name: "Sipho Dlamini", email: "sipho@company.com",
+    hourly_wage: 68, user_role: "front_end", staff_role_ids: [],
+    is_active: true,  created_at: "2026-02-10T08:00:00Z" },
+  { id: "7", org_id: "org1", name: "Amanda Botha",  email: "amanda@company.com",
+    hourly_wage: 72, user_role: "front_end", staff_role_ids: [],
+    is_active: true,  created_at: "2026-02-10T08:00:00Z" },
 ];
 
 const MOCK_CREDS: HardwareCredential[] = [
@@ -630,6 +648,132 @@ function RolesModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+/* ── Task History analytics ───────────────────────────────────────────
+   Reads completed-task logs straight from useFloorStore (workerId lines up
+   with StaffMember.id — see the note on MOCK_STAFF/MOCK_OPERATORS) so this
+   reflects the same task history the floor app produced, not a separate
+   mock dataset. Used for performance review, fault cause-finding (what did
+   this person work on and when), and reward/coaching decisions. */
+function MiniStat({ label, value, accent }: { label: string; value: string; accent?: string }) {
+  return (
+    <div style={{ padding: "10px 8px", borderRadius: 8, border: "1px solid var(--border)", backgroundColor: "var(--surface)", textAlign: "center" }}>
+      <div style={{ fontSize: 18, fontWeight: 700, color: accent ?? "var(--text-primary)" }}>{value}</div>
+      <div style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 2 }}>{label}</div>
+    </div>
+  );
+}
+
+function StaffTaskHistory({ staffId }: { staffId: string }) {
+  const logs  = useFloorStore((s) => s.logs);
+  const tasks = useManufacturingStore((s) => s.tasks);
+  const myLogs = useMemo(() => logs.filter((l) => l.workerId === staffId), [logs, staffId]);
+
+  const stats = useMemo(() => {
+    if (myLogs.length === 0) return null;
+    let onTime = 0, varianceSum = 0, matchedForVariance = 0, totalMinutes = 0;
+    myLogs.forEach((l) => {
+      const task = tasks.find((t) => t.id === l.taskId);
+      const actualMin = (l.completedAt - l.startedAt) / 60000;
+      totalMinutes += actualMin;
+      if (task) {
+        if (actualMin <= task.duration) onTime++;
+        varianceSum += ((actualMin - task.duration) / task.duration) * 100;
+        matchedForVariance++;
+      }
+    });
+    return {
+      count: myLogs.length,
+      onTimeRate: Math.round((onTime / myLogs.length) * 100),
+      avgVariancePct: matchedForVariance ? Math.round(varianceSum / matchedForVariance) : 0,
+      totalHours: totalMinutes / 60,
+    };
+  }, [myLogs, tasks]);
+
+  const dayBuckets = useMemo(() => {
+    const days: { label: string; count: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const count = myLogs.filter((l) => {
+        const ld = new Date(l.completedAt);
+        return ld.getDate() === d.getDate() && ld.getMonth() === d.getMonth() && ld.getFullYear() === d.getFullYear();
+      }).length;
+      days.push({ label: d.toLocaleDateString("en-ZA", { weekday: "narrow" }), count });
+    }
+    return days;
+  }, [myLogs]);
+  const maxDay = Math.max(1, ...dayBuckets.map((d) => d.count));
+
+  if (!stats) {
+    return (
+      <p style={{ fontSize: 13, color: "var(--text-tertiary)", margin: 0 }}>
+        No completed tasks yet — history populates as this person completes tasks on the floor.
+      </p>
+    );
+  }
+
+  const sorted = [...myLogs].sort((a, b) => b.completedAt - a.completedAt);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+        <MiniStat label="Completed" value={String(stats.count)} />
+        <MiniStat label="On-Time Rate" value={`${stats.onTimeRate}%`} accent={stats.onTimeRate >= 70 ? "#3CC86A" : "#E55F1F"} />
+        <MiniStat label="Avg vs Estimate" value={`${stats.avgVariancePct > 0 ? "+" : ""}${stats.avgVariancePct}%`} accent={stats.avgVariancePct <= 0 ? "#3CC86A" : "#E55F1F"} />
+        <MiniStat label="Hours Logged" value={stats.totalHours.toFixed(1)} />
+      </div>
+
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
+          Last 7 Days
+        </div>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 44 }}>
+          {dayBuckets.map((d, i) => (
+            <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+              <div style={{
+                width: "100%", borderRadius: 3,
+                backgroundColor: d.count > 0 ? "var(--accent)" : "var(--border)",
+                height: Math.max(3, (d.count / maxDay) * 32),
+              }} />
+              <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>{d.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
+          Recent Completions
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {sorted.slice(0, 8).map((l) => {
+            const task = tasks.find((t) => t.id === l.taskId);
+            const actualMin = Math.round((l.completedAt - l.startedAt) / 60000);
+            const over = task ? actualMin > task.duration : false;
+            return (
+              <div key={l.id} style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "8px 12px", borderRadius: 8,
+                border: "1px solid var(--border)", backgroundColor: "var(--surface)",
+              }}>
+                <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {task?.name ?? "Unknown task"}
+                </span>
+                <span style={{ fontSize: 11, color: "var(--text-tertiary)", flexShrink: 0 }}>
+                  {fmtDateTime(new Date(l.completedAt).toISOString())}
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 600, flexShrink: 0, color: task ? (over ? "#E55F1F" : "#3CC86A") : "var(--text-tertiary)" }}>
+                  {actualMin}m{task ? ` / ${task.duration}m` : ""}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Staff List ───────────────────────────────────────────────────── */
 function StaffList({
   staff, allStaff, onAddStaff, onEdit, onDelete, sel,
@@ -807,6 +951,15 @@ function StaffList({
                         </div>
                       ))}
                     </div>
+                  )}
+
+                  {staff.user_role === "front_end" && (
+                    <>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.1em", margin: "18px 0 10px", display: "flex", alignItems: "center", gap: 6 }}>
+                        <History size={12} /> Task History
+                      </div>
+                      <StaffTaskHistory staffId={staff.id} />
+                    </>
                   )}
                 </div>
               )}
