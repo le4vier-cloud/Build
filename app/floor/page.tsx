@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   LogOut, ChevronLeft, Play, Check, X, Clock, FileText,
   Ruler, Cpu, File, Gauge, Power, AlertTriangle, User,
+  ListChecks, Camera, CheckCircle2, Circle,
 } from "lucide-react";
 import { useManufacturingStore } from "@/stores/useManufacturingStore";
 import { useFloorStore, type Operator, type TaskLog } from "@/stores/useFloorStore";
@@ -43,9 +44,16 @@ const FLOOR_DEMO = {
     },
     {
       id: "ft4", name: "QC Inspection", duration: 30, optionSet: "human" as const,
-      sop: "1. Check unit against the QC checklist.\n2. Photograph any defects found.\n3. Pass → move to Paint & Polish. Fail → tag and return to Assembly.",
+      kind: "checklist" as const,
+      checklistItems: [
+        { id: "ci1", label: "Dimensions match the work order",        requiresPhoto: true },
+        { id: "ci2", label: "Surface finish free of defects",         requiresPhoto: true },
+        { id: "ci3", label: "All fasteners torqued to spec",          requiresPhoto: false },
+        { id: "ci4", label: "Serial number tag applied and legible",  requiresPhoto: true },
+        { id: "ci5", label: "Unit clean and free of debris",          requiresPhoto: false },
+      ],
       files: [
-        { id: "f6", name: "QC Checklist.pdf", kind: "sop" as const, size: "210 KB" },
+        { id: "f6", name: "QC Checklist Reference.pdf", kind: "sop" as const, size: "210 KB" },
       ],
     },
     {
@@ -128,8 +136,12 @@ export default function FloorPage() {
 
   const activeTask = tasks.find((t) => t.id === activeTaskId);
   if (activeTask && activeTaskStartedAt) {
+    /* Each task kind gets its own optimized execution screen — this is the
+       one branch point a new kind needs (see TaskKind in
+       types/manufacturing.ts for the rest of the extension path). */
+    const ExecutionScreen = activeTask.kind === "checklist" ? ChecklistExecution : TaskExecution;
     return (
-      <TaskExecution
+      <ExecutionScreen
         task={activeTask}
         workflow={workflowFor(activeTask, workflows)}
         startedAt={activeTaskStartedAt}
@@ -263,7 +275,8 @@ function Queue({
         )}
         {pending.map((task) => {
           const wf = workflowFor(task, workflows);
-          const isMachine = task.optionSet === "machine";
+          const isMachine   = task.optionSet === "machine";
+          const isChecklist = task.kind === "checklist";
           return (
             <div
               key={task.id}
@@ -275,15 +288,18 @@ function Queue({
             >
               <div style={{
                 width: 52, height: 52, borderRadius: 14, flexShrink: 0,
-                backgroundColor: isMachine ? "rgba(245,99,0,0.12)" : "rgba(37,99,235,0.12)",
+                backgroundColor: isChecklist ? "rgba(147,51,234,0.12)" : isMachine ? "rgba(245,99,0,0.12)" : "rgba(37,99,235,0.12)",
                 display: "flex", alignItems: "center", justifyContent: "center",
               }}>
-                {isMachine ? <Cpu size={24} color="#F56300" /> : <User size={24} color="#4A90D9" />}
+                {isChecklist ? <ListChecks size={24} color="#9333EA" /> : isMachine ? <Cpu size={24} color="#F56300" /> : <User size={24} color="#4A90D9" />}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 18, fontWeight: 700 }}>{task.name}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4, flexWrap: "wrap" }}>
                   {wf && <span style={{ fontSize: 12, color: "#9A9A9A" }}>{wf.name}</span>}
+                  {isChecklist && (
+                    <span style={{ fontSize: 12, color: "#9333EA" }}>{(task.checklistItems ?? []).length} items</span>
+                  )}
                   <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#9A9A9A" }}>
                     <Clock size={12} /> ~{task.duration}m
                   </span>
@@ -327,55 +343,17 @@ function TaskExecution({
   onComplete: () => void; onCancel: () => void;
 }) {
   const elapsed = useElapsedSeconds(startedAt);
-  const estimateSeconds = task.duration * 60;
-  const overEstimate = elapsed > estimateSeconds;
   const [machineRunning, setMachineRunning] = useState(false);
   const [openFile, setOpenFile] = useState<TaskFile | null>(null);
   const isMachine = task.optionSet === "machine";
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      {/* Top bar */}
-      <div style={{ display: "flex", alignItems: "center", padding: "18px 28px", borderBottom: "1px solid #262626" }}>
-        <button
-          onClick={onCancel}
-          style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#9A9A9A", fontSize: 14, fontWeight: 600, cursor: "pointer" }}
-        >
-          <ChevronLeft size={18} /> Cancel Task
-        </button>
-      </div>
+      <ExecutionTopBar onCancel={onCancel} />
 
       <div style={{ flex: 1, overflowY: "auto", padding: "28px 28px 40px", maxWidth: 720, width: "100%", margin: "0 auto" }}>
-        {workflow && (
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#9A9A9A", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
-            {workflow.name}
-          </div>
-        )}
-        <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 24 }}>{task.name}</h1>
-
-        {/* Timer */}
-        <div style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "22px 26px", borderRadius: 18, marginBottom: 20,
-          backgroundColor: overEstimate ? "rgba(255,107,94,0.1)" : "rgba(34,197,94,0.08)",
-          border: `1px solid ${overEstimate ? "#4A2A26" : "#1F3A2A"}`,
-        }}>
-          <div>
-            <div style={{ fontSize: 12, color: "#9A9A9A", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>Time on task</div>
-            <div style={{ fontSize: 40, fontWeight: 800, fontFamily: "monospace", color: overEstimate ? "#FF6B5E" : "#4ADE80", marginTop: 4 }}>
-              {fmtClock(elapsed)}
-            </div>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 12, color: "#9A9A9A" }}>Estimated</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: "#D0D0D0" }}>{fmtClock(estimateSeconds)}</div>
-            {overEstimate && (
-              <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#FF6B5E", marginTop: 4, justifyContent: "flex-end" }}>
-                <AlertTriangle size={12} /> over estimate
-              </div>
-            )}
-          </div>
-        </div>
+        <TaskHeading task={task} workflow={workflow} />
+        <TaskTimer elapsed={elapsed} estimateSeconds={task.duration * 60} />
 
         {/* Machine panel */}
         {isMachine && (
@@ -415,68 +393,256 @@ function TaskExecution({
           </div>
         )}
 
-        {/* Files */}
-        {task.files && task.files.length > 0 && (
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#9A9A9A", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
-              Files
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {task.files.map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => setOpenFile(f)}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", borderRadius: 14,
-                    backgroundColor: "#1F1F1F", border: "1px solid #2A2A2A", cursor: "pointer", textAlign: "left",
-                  }}
-                >
-                  <span style={{ color: "#9A9A9A" }}>{FILE_ICON[f.kind]}</span>
-                  <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{f.name}</span>
-                  <span style={{ fontSize: 12, color: "#6B6B6B" }}>{f.size}</span>
+        <FilesSection files={task.files} onOpen={setOpenFile} />
+      </div>
+
+      <CompleteButton onComplete={onComplete} />
+      <FilePreviewModal file={openFile} onClose={() => setOpenFile(null)} />
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════
+   Screen 3b — Checklist execution (task.kind === "checklist")
+   Tap-through items instead of prose instructions; items can
+   optionally require a photo (set per item in the back-end), and
+   completion is gated until every item — and required photo — is in.
+══════════════════════════════════════════════════ */
+function ChecklistExecution({
+  task, workflow, startedAt, onComplete, onCancel,
+}: {
+  task: Task; workflow: Workflow | undefined; startedAt: number;
+  onComplete: () => void; onCancel: () => void;
+}) {
+  const elapsed = useElapsedSeconds(startedAt);
+  const items = task.checklistItems ?? [];
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [photos, setPhotos] = useState<Record<string, string>>({});
+  const [openFile, setOpenFile] = useState<TaskFile | null>(null);
+  const photoTargetRef = useRef<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  const doneCount    = items.filter((i) => checked[i.id]).length;
+  const missingPhoto = items.some((i) => i.requiresPhoto && !photos[i.id]);
+  const canComplete  = items.length > 0 && doneCount === items.length && !missingPhoto;
+
+  const toggle = (id: string) => setChecked((c) => ({ ...c, [id]: !c[id] }));
+
+  const requestPhoto = (id: string) => {
+    photoTargetRef.current = id;
+    photoInputRef.current?.click();
+  };
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const id = photoTargetRef.current;
+    if (file && id) setPhotos((p) => ({ ...p, [id]: file.name }));
+    e.target.value = "";
+    photoTargetRef.current = null;
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      <ExecutionTopBar onCancel={onCancel} />
+
+      <div style={{ flex: 1, overflowY: "auto", padding: "28px 28px 40px", maxWidth: 720, width: "100%", margin: "0 auto" }}>
+        <TaskHeading task={task} workflow={workflow} />
+        <TaskTimer elapsed={elapsed} estimateSeconds={task.duration * 60} />
+
+        {/* Progress */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#9A9A9A", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Checklist
+          </span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: doneCount === items.length ? "#4ADE80" : "#9A9A9A" }}>
+            {doneCount} of {items.length} checked
+          </span>
+        </div>
+        <div style={{ height: 6, borderRadius: 3, backgroundColor: "#262626", marginBottom: 20, overflow: "hidden" }}>
+          <div style={{
+            height: "100%", borderRadius: 3, backgroundColor: "#9333EA", transition: "width 0.2s",
+            width: items.length ? `${(doneCount / items.length) * 100}%` : "0%",
+          }} />
+        </div>
+
+        {/* Items */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+          {items.map((item) => {
+            const isChecked = !!checked[item.id];
+            const hasPhoto  = !!photos[item.id];
+            return (
+              <div key={item.id} style={{
+                display: "flex", alignItems: "center", gap: 14,
+                padding: "18px 20px", borderRadius: 16,
+                backgroundColor: isChecked ? "rgba(34,197,94,0.08)" : "#1F1F1F",
+                border: `1px solid ${isChecked ? "#1F3A2A" : "#2A2A2A"}`,
+              }}>
+                <button onClick={() => toggle(item.id)} style={{ display: "flex", background: "none", border: "none", padding: 0, cursor: "pointer", flexShrink: 0 }}>
+                  {isChecked ? <CheckCircle2 size={28} color="#4ADE80" /> : <Circle size={28} color="#6B6B6B" />}
                 </button>
-              ))}
-            </div>
+                <span style={{
+                  flex: 1, fontSize: 16, fontWeight: 600,
+                  color: isChecked ? "#9A9A9A" : "#F0F0F0",
+                  textDecoration: isChecked ? "line-through" : "none",
+                }}>
+                  {item.label}
+                </span>
+                {item.requiresPhoto && (
+                  <button
+                    onClick={() => requestPhoto(item.id)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 6, flexShrink: 0,
+                      padding: "8px 14px", borderRadius: 10, cursor: "pointer", fontSize: 12, fontWeight: 700,
+                      border: `1.5px solid ${hasPhoto ? "#4ADE80" : "#F56300"}`,
+                      backgroundColor: hasPhoto ? "rgba(74,222,128,0.1)" : "rgba(245,99,0,0.1)",
+                      color: hasPhoto ? "#4ADE80" : "#F56300",
+                    }}
+                  >
+                    <Camera size={14} /> {hasPhoto ? "Photo added" : "Add photo"}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <FilesSection files={task.files} onOpen={setOpenFile} />
+      </div>
+
+      <CompleteButton onComplete={onComplete} disabled={!canComplete} hint={
+        !canComplete ? `Check off all items${missingPhoto ? " and add required photos" : ""} to complete` : undefined
+      } />
+      <input ref={photoInputRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handlePhotoChange} />
+      <FilePreviewModal file={openFile} onClose={() => setOpenFile(null)} />
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════
+   Shared execution-screen pieces
+══════════════════════════════════════════════════ */
+function ExecutionTopBar({ onCancel }: { onCancel: () => void }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", padding: "18px 28px", borderBottom: "1px solid #262626" }}>
+      <button
+        onClick={onCancel}
+        style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#9A9A9A", fontSize: 14, fontWeight: 600, cursor: "pointer" }}
+      >
+        <ChevronLeft size={18} /> Cancel Task
+      </button>
+    </div>
+  );
+}
+
+function TaskHeading({ task, workflow }: { task: Task; workflow: Workflow | undefined }) {
+  return (
+    <>
+      {workflow && (
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#9A9A9A", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+          {workflow.name}
+        </div>
+      )}
+      <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 24 }}>{task.name}</h1>
+    </>
+  );
+}
+
+function TaskTimer({ elapsed, estimateSeconds }: { elapsed: number; estimateSeconds: number }) {
+  const overEstimate = elapsed > estimateSeconds;
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      padding: "22px 26px", borderRadius: 18, marginBottom: 20,
+      backgroundColor: overEstimate ? "rgba(255,107,94,0.1)" : "rgba(34,197,94,0.08)",
+      border: `1px solid ${overEstimate ? "#4A2A26" : "#1F3A2A"}`,
+    }}>
+      <div>
+        <div style={{ fontSize: 12, color: "#9A9A9A", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>Time on task</div>
+        <div style={{ fontSize: 40, fontWeight: 800, fontFamily: "monospace", color: overEstimate ? "#FF6B5E" : "#4ADE80", marginTop: 4 }}>
+          {fmtClock(elapsed)}
+        </div>
+      </div>
+      <div style={{ textAlign: "right" }}>
+        <div style={{ fontSize: 12, color: "#9A9A9A" }}>Estimated</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: "#D0D0D0" }}>{fmtClock(estimateSeconds)}</div>
+        {overEstimate && (
+          <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#FF6B5E", marginTop: 4, justifyContent: "flex-end" }}>
+            <AlertTriangle size={12} /> over estimate
           </div>
         )}
       </div>
+    </div>
+  );
+}
 
-      {/* Complete button */}
-      <div style={{ padding: "16px 28px 28px", maxWidth: 720, width: "100%", margin: "0 auto" }}>
+function FilesSection({ files, onOpen }: { files: TaskFile[] | undefined; onOpen: (f: TaskFile) => void }) {
+  if (!files || files.length === 0) return null;
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "#9A9A9A", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
+        Files
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {files.map((f) => (
+          <button
+            key={f.id}
+            onClick={() => onOpen(f)}
+            style={{
+              display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", borderRadius: 14,
+              backgroundColor: "#1F1F1F", border: "1px solid #2A2A2A", cursor: "pointer", textAlign: "left",
+            }}
+          >
+            <span style={{ color: "#9A9A9A" }}>{FILE_ICON[f.kind]}</span>
+            <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{f.name}</span>
+            <span style={{ fontSize: 12, color: "#6B6B6B" }}>{f.size}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CompleteButton({ onComplete, disabled, hint }: { onComplete: () => void; disabled?: boolean; hint?: string }) {
+  return (
+    <div style={{ padding: "16px 28px 28px", maxWidth: 720, width: "100%", margin: "0 auto" }}>
+      <button
+        onClick={onComplete}
+        disabled={disabled}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 10, width: "100%",
+          padding: "20px", borderRadius: 16, border: "none",
+          backgroundColor: disabled ? "#2A3A30" : "#22C55E", color: disabled ? "#5A6A60" : "#0A1F12",
+          fontSize: 18, fontWeight: 800, cursor: disabled ? "not-allowed" : "pointer",
+        }}
+      >
+        <Check size={22} strokeWidth={3} /> Complete Task
+      </button>
+      {hint && <p style={{ fontSize: 12, color: "#9A9A9A", textAlign: "center", marginTop: 10 }}>{hint}</p>}
+    </div>
+  );
+}
+
+/* File preview modal (mock — no real file storage) */
+function FilePreviewModal({ file, onClose }: { file: TaskFile | null; onClose: () => void }) {
+  if (!file) return null;
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }}
+      onClick={onClose}
+    >
+      <div
+        style={{ width: "100%", maxWidth: 420, backgroundColor: "#1F1F1F", border: "1px solid #2E2E2E", borderRadius: 20, padding: 28, textAlign: "center" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ color: "#F56300", marginBottom: 14, display: "flex", justifyContent: "center" }}>{FILE_ICON[file.kind]}</div>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>{file.name}</div>
+        <div style={{ fontSize: 13, color: "#9A9A9A", marginBottom: 22 }}>{file.size}</div>
         <button
-          onClick={onComplete}
-          style={{
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 10, width: "100%",
-            padding: "20px", borderRadius: 16, border: "none",
-            backgroundColor: "#22C55E", color: "#0A1F12", fontSize: 18, fontWeight: 800, cursor: "pointer",
-          }}
+          onClick={onClose}
+          style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", backgroundColor: "#F56300", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}
         >
-          <Check size={22} strokeWidth={3} /> Complete Task
+          Close
         </button>
       </div>
-
-      {/* File preview modal (mock — no real file storage) */}
-      {openFile && (
-        <div
-          style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }}
-          onClick={() => setOpenFile(null)}
-        >
-          <div
-            style={{ width: "100%", maxWidth: 420, backgroundColor: "#1F1F1F", border: "1px solid #2E2E2E", borderRadius: 20, padding: 28, textAlign: "center" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ color: "#F56300", marginBottom: 14, display: "flex", justifyContent: "center" }}>{FILE_ICON[openFile.kind]}</div>
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>{openFile.name}</div>
-            <div style={{ fontSize: 13, color: "#9A9A9A", marginBottom: 22 }}>{openFile.size}</div>
-            <button
-              onClick={() => setOpenFile(null)}
-              style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", backgroundColor: "#F56300", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

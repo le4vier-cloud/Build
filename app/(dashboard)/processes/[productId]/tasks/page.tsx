@@ -7,8 +7,10 @@ import {
   Workflow, Pencil, GitBranch,
   ChevronDown, ChevronRight, GripVertical,
   FileText, Upload, Search, Package,
+  ListChecks, Camera,
 } from "lucide-react";
 import Link from "next/link";
+import type { TaskKind, ChecklistItem } from "@/types/manufacturing";
 
 /* ── Demo data ──────────────────────────────────────────────────── */
 const DEMO = {
@@ -80,6 +82,16 @@ const MACH_ACCEPTS_MAP: Record<MachType, string> = {
   grinding:    ".nc,.gcode,.step,.stp",
 };
 
+/* Registry of task types the floor app knows how to render — adding a new
+   one means extending TaskKind (types/manufacturing.ts), adding its entry
+   here, adding its config section below when selected, and adding a
+   matching branch to the task router in app/floor/page.tsx. */
+const TASK_KINDS: { key: TaskKind; label: string; hint: string; icon: React.ReactNode }[] = [
+  { key: "standard",  label: "Standard",  hint: "SOP, files, timer",        icon: <FileText size={13} /> },
+  { key: "checklist", label: "Checklist", hint: "Tap-through checklist",    icon: <ListChecks size={13} /> },
+];
+const blankChecklistItem = (): ChecklistItem => ({ id: `ci-${Date.now()}-${Math.random()}`, label: "", requiresPhoto: false });
+
 interface SOPFile    { id: string; name: string; }
 interface MachFile   { id: string; name: string; machType: MachType; }
 interface TaskMat    { id: string; partId: string; name: string; partType: "OS" | "IM"; qty: number; }
@@ -100,7 +112,7 @@ type PanelState =
   | { mode: "new-workflow" }
   | { mode: "edit-workflow"; wfId: string; name: string }
   | { mode: "new-task"; targetWfId: string }
-  | { mode: "edit-task"; taskId: string; name: string; maxDuration: string; optionSet: "human" | "machine"; meta: TaskMeta }
+  | { mode: "edit-task"; taskId: string; name: string; maxDuration: string; optionSet: "human" | "machine"; meta: TaskMeta; kind: TaskKind; checklistItems: ChecklistItem[] }
   | { mode: "new-task-option"; taskId: string; parentPath: string[] }
   | { mode: "edit-task-option"; taskId: string; parentPath: string[]; optId: string; name: string; maxDuration: string; optionSet: "human" | "machine"; meta: TaskMeta }
   | { mode: "new-workflow-option"; wfId: string; parentPath: string[] }
@@ -112,7 +124,7 @@ type PanelState =
 interface LocalTask { id: string; name: string; duration: number; optionSet: "human" | "machine"; meta: TaskMeta; options: LocalTask[] }
 interface WfOption  { id: string; name: string; tasks: LocalTask[]; options: WfOption[] }
 
-interface SaveData { name: string; maxDuration?: number; optionSet?: "human" | "machine"; meta?: TaskMeta; }
+interface SaveData { name: string; maxDuration?: number; optionSet?: "human" | "machine"; meta?: TaskMeta; kind?: TaskKind; checklistItems?: ChecklistItem[]; }
 
 const fmtMin = (min: number) => {
   const h = Math.floor(min / 60), m = min % 60;
@@ -200,6 +212,8 @@ function SlidePanel({ panel, parts, onClose, onSave }: {
   const [partFilter,  setPartFilter]  = useState<"all" | "OS" | "IM">("all");
   const [sopDrag,     setSopDrag]     = useState<number | null>(null);
   const [machDrag,    setMachDrag]    = useState<number | null>(null);
+  const [kind,            setKind]            = useState<TaskKind>("standard");
+  const [checklistItems,  setChecklistItems]  = useState<ChecklistItem[]>([]);
 
   const sopRef  = useRef<HTMLInputElement>(null);
   const machRef = useRef<HTMLInputElement>(null);
@@ -218,6 +232,8 @@ function SlidePanel({ panel, parts, onClose, onSave }: {
       setName(""); setMaxDuration(""); setOptionSet("human");
       setNumPeople("1"); setSopFiles([]); setMachFiles([]); setMaterials([]);
     }
+    setKind(panel.mode === "edit-task" ? panel.kind : "standard");
+    setChecklistItems(panel.mode === "edit-task" ? panel.checklistItems : []);
     setPartQuery(""); setShowDrop(false); setAddingPart(false);
     setNewPart(blankNewPart()); setPartFilter("all"); setSelMach(null);
   }, [panel]);
@@ -289,6 +305,8 @@ function SlidePanel({ panel, parts, onClose, onSave }: {
       onSave({
         name: name.trim(), maxDuration: dur, optionSet,
         meta: { numPeople: parseInt(numPeople, 10) || 1, sopFiles, machFiles, materials },
+        kind,
+        checklistItems: kind === "checklist" ? checklistItems.filter(i => i.label.trim()) : undefined,
       });
     }
   };
@@ -329,10 +347,68 @@ function SlidePanel({ panel, parts, onClose, onSave }: {
             </div>
           )}
 
-          {/* Type */}
+          {/* Task Type — selects which floor screen this task renders as */}
           {!isWf && (
             <div style={sp.field}>
-              <label style={sp.label}>Type</label>
+              <label style={sp.label}>Task Type</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                {TASK_KINDS.map(k => (
+                  <button key={k.key} type="button" onClick={() => setKind(k.key)}
+                    title={k.hint}
+                    style={{ ...sp.typeBtn, flex: 1, ...(kind === k.key ? sp.typeBtnHuman : {}) }}>
+                    {k.icon} {k.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Checklist items — only for the Checklist task type */}
+          {!isWf && kind === "checklist" && (
+            <div style={sp.section}>
+              <div style={sp.sectionHead}>
+                <ListChecks size={13} color="var(--text-secondary)" />
+                <span style={sp.sectionTitle}>Checklist Items</span>
+                <span style={sp.sectionSub}>shown as tap-through steps on the floor</span>
+              </div>
+              {checklistItems.map((item, idx) => (
+                <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                  <span style={sp.fileIdx}>{idx + 1}</span>
+                  <input
+                    value={item.label}
+                    onChange={e => setChecklistItems(items => items.map((it, i) => i === idx ? { ...it, label: e.target.value } : it))}
+                    placeholder="e.g. Check dimensions match work order"
+                    style={{ ...sp.input, flex: 1, height: 32 }}
+                  />
+                  <button type="button"
+                    title="Require a photo for this item"
+                    onClick={() => setChecklistItems(items => items.map((it, i) => i === idx ? { ...it, requiresPhoto: !it.requiresPhoto } : it))}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 4, flexShrink: 0, height: 32, padding: "0 8px",
+                      borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 600,
+                      border: `1.5px solid ${item.requiresPhoto ? "#F56300" : "var(--border)"}`,
+                      backgroundColor: item.requiresPhoto ? "rgba(245,99,0,0.1)" : "transparent",
+                      color: item.requiresPhoto ? "#F56300" : "var(--text-tertiary)",
+                    }}>
+                    <Camera size={12} /> Photo
+                  </button>
+                  <button type="button"
+                    onClick={() => setChecklistItems(items => items.filter((_, i) => i !== idx))}
+                    style={sp.fileRemove}><X size={11} /></button>
+                </div>
+              ))}
+              <button type="button"
+                onClick={() => setChecklistItems(items => [...items, blankChecklistItem()])}
+                style={sp.attachBtn}>
+                <Plus size={12} /> Add checklist item
+              </button>
+            </div>
+          )}
+
+          {/* Labour Type */}
+          {!isWf && (
+            <div style={sp.field}>
+              <label style={sp.label}>Labour Type</label>
               <div style={{ display: "flex", gap: 8 }}>
                 <button type="button" onClick={() => setOptionSet("human")}
                   style={{ ...sp.typeBtn, ...(optionSet === "human" ? sp.typeBtnHuman : {}) }}>
@@ -795,12 +871,12 @@ export function TasksContent({ productId, hideHeader = false }: { productId: str
     } else if (panel.mode === "new-task" && data.maxDuration && data.optionSet && data.meta) {
       const newId = `t-${Date.now()}`;
       useManufacturingStore.setState(s => ({
-        tasks: [...s.tasks, { id: newId, name: data.name, duration: data.maxDuration!, optionSet: data.optionSet! }],
+        tasks: [...s.tasks, { id: newId, name: data.name, duration: data.maxDuration!, optionSet: data.optionSet!, kind: data.kind, checklistItems: data.checklistItems }],
         workflows: s.workflows.map(w => w.id === panel.targetWfId ? { ...w, taskIds: [...w.taskIds, newId] } : w),
       }));
       setTaskMeta(m => ({ ...m, [newId]: data.meta! }));
     } else if (panel.mode === "edit-task" && data.maxDuration && data.optionSet && data.meta) {
-      updateTask(panel.taskId, { name: data.name, duration: data.maxDuration, optionSet: data.optionSet });
+      updateTask(panel.taskId, { name: data.name, duration: data.maxDuration, optionSet: data.optionSet, kind: data.kind, checklistItems: data.checklistItems });
       setTaskMeta(m => ({ ...m, [panel.taskId]: data.meta! }));
     } else if (panel.mode === "new-task-option" && data.maxDuration && data.optionSet && data.meta) {
       const id = `topt-${Date.now()}`;
@@ -1064,6 +1140,15 @@ export function TasksContent({ productId, hideHeader = false }: { productId: str
                             {(taskOptions[t.id] ?? []).length > 0 && (
                               <span style={s.optionBadge}>A</span>
                             )}
+                            {t.kind === "checklist" && (
+                              <span title={`${(t.checklistItems ?? []).length} checklist items`} style={{
+                                display: "flex", alignItems: "center", gap: 3,
+                                fontSize: 9, fontWeight: 700, borderRadius: 4, padding: "2px 6px", flexShrink: 0,
+                                backgroundColor: "rgba(147,51,234,0.12)", color: "#9333EA",
+                              }}>
+                                <ListChecks size={10} /> checklist
+                              </span>
+                            )}
                             <span style={{
                               fontSize: 9, fontWeight: 700, borderRadius: 4, padding: "2px 6px", flexShrink: 0,
                               backgroundColor: t.optionSet === "machine" ? "rgba(37,99,235,0.12)" : "rgba(5,150,105,0.12)",
@@ -1081,7 +1166,7 @@ export function TasksContent({ productId, hideHeader = false }: { productId: str
                             </button>
                             <button
                               style={{ ...s.actionBtn, opacity: taskHov ? 1 : 0, transition: "opacity 0.12s" }}
-                              onClick={() => setPanel({ mode: "edit-task", taskId: t.id, name: t.name, maxDuration: String(t.duration), optionSet: t.optionSet, meta })}
+                              onClick={() => setPanel({ mode: "edit-task", taskId: t.id, name: t.name, maxDuration: String(t.duration), optionSet: t.optionSet, meta, kind: t.kind ?? "standard", checklistItems: t.checklistItems ?? [] })}
                               title="Edit task"
                             >
                               <Pencil size={11} />

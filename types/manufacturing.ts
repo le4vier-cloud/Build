@@ -7,6 +7,19 @@ export interface TaskFile {
   size: string; // e.g. "1.2 MB" — display only, no real storage
 }
 
+/* A Task's `kind` selects which execution screen the floor app renders for
+   it — each kind gets its own optimized UI instead of one generic form.
+   Adding a new kind: extend this union, add its config fields to Task
+   below, add it to TASK_KINDS in the Task Manager editor, and add a new
+   branch in the floor app's task router. */
+export type TaskKind = "standard" | "checklist";
+
+export interface ChecklistItem {
+  id: string;
+  label: string;
+  requiresPhoto: boolean; // set per item in the back-end
+}
+
 export interface Task {
   id: string;
   name: string;
@@ -16,6 +29,8 @@ export interface Task {
   sop?: string;        // step-by-step instructions shown on the floor
   files?: TaskFile[];  // SOPs, machining programs, drawings
   machineName?: string; // only meaningful when optionSet === "machine"
+  kind?: TaskKind;                  // defaults to "standard" when absent
+  checklistItems?: ChecklistItem[]; // only meaningful when kind === "checklist"
 }
 
 export interface Workflow {
