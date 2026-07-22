@@ -1,36 +1,13 @@
-/**
- * count-integration.ts
- *
- * Drop-in accounting integration client. Fire accounting events from any
- * source app (Build, Transport, Shake) to Count — or swap the provider to
- * send the same events to Xero, QuickBooks, or Sage instead.
- *
- * USAGE (copy this file into the source app's lib/ directory):
- *
- *   const accounting = new AccountingIntegration({
- *     url:      process.env.COUNT_WEBHOOK_URL!,
- *     secret:   process.env.COUNT_WEBHOOK_SECRET!,
- *     orgId:    process.env.COUNT_ORG_ID!,
- *     source:   'build',           // or 'transport' | 'shake'
- *     provider: 'count',           // or 'xero' | 'quickbooks' | 'sage'
- *   });
- *
- *   await accounting.createInvoice({ ... });
- *   await accounting.createBill({ ... });
- *   await accounting.createExpense({ ... });
- *   await accounting.recordPayment({ ... });
- */
 import { createHmac, randomUUID } from 'crypto';
+import { createClient as createServiceClient } from '@supabase/supabase-js';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-export type VATType = 'standard' | 'zero' | 'exempt' | 'none';
+export type VATType  = 'standard' | 'zero' | 'exempt' | 'none';
 export type Provider = 'count' | 'xero' | 'quickbooks' | 'sage';
 
 export interface LineItem {
   description: string;
   quantity:    number;
-  unitPrice:   number;     // excluding VAT
+  unitPrice:   number;
   vatType?:    VATType;
 }
 
@@ -43,13 +20,13 @@ export interface Contact {
 
 export interface InvoicePayload {
   number?:        string;
-  date:           string;       // YYYY-MM-DD
+  date:           string;
   dueDate?:       string;
   contact?:       Contact;
   lineItems:      LineItem[];
   notes?:         string;
   currency?:      string;
-  sourceRecordId: string;       // ID in the source app (for idempotency)
+  sourceRecordId: string;
 }
 
 export interface BillPayload {
@@ -65,9 +42,9 @@ export interface BillPayload {
 export interface ExpensePayload {
   date:           string;
   description:    string;
-  amount:         number;       // excluding VAT
+  amount:         number;
   vatType?:       VATType;
-  category?:      string;       // must match Count's expense category names
+  category?:      string;
   contact?:       Contact;
   notes?:         string;
   reference?:     string;
@@ -76,7 +53,7 @@ export interface ExpensePayload {
 
 export interface PaymentPayload {
   date:           string;
-  amount:         number;       // excluding VAT
+  amount:         number;
   vatType?:       VATType;
   description?:   string;
   contact?:       Contact;
@@ -87,239 +64,124 @@ export interface PaymentPayload {
 }
 
 export interface IntegrationConfig {
-  url:       string;      // Count webhook URL or accounting provider API base
-  secret:    string;      // HMAC signing secret (Count) or OAuth token (Xero/QB)
-  orgId:     string;      // Count org UUID (or Xero tenantId / QB realmId)
-  source:    string;      // 'build' | 'transport' | 'shake'
-  provider?: Provider;    // default: 'count'
-  silent?:   boolean;     // if true, log errors but never throw (default: true)
+  webhookUrl:       string;
+  webhookSecret:    string;
+  accountingOrgId?: string;
+  source:           string;
+  provider?:        Provider;
 }
 
-// ── Signature ─────────────────────────────────────────────────────────────────
-
-function sign(secret: string, body: string): string {
+function sign(secret: string, body: string) {
   return 'sha256=' + createHmac('sha256', secret).update(body).digest('hex');
 }
 
-// ── Provider adapters ─────────────────────────────────────────────────────────
-// Each adapter maps our standard payload to the provider's wire format.
-// Count is implemented fully; Xero/QB show the extension point.
+function buildRequest(config: IntegrationConfig, eventType: string, sourceRecordId: string, data: object) {
+  const provider = config.provider ?? 'count';
 
-interface AdapterResult {
-  url:     string;
-  headers: Record<string, string>;
-  body:    string;
-}
+  if (provider === 'xero') {
+    const body = JSON.stringify({ Invoices: [{ ...data }] });
+    return {
+      url: `https://api.xero.com/api.xro/2.0/Invoices`,
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.webhookSecret}`, 'Xero-tenant-id': config.accountingOrgId ?? '' },
+      body,
+    };
+  }
 
-function adaptCount(
-  config: IntegrationConfig,
-  eventType: string,
-  sourceRecordId: string,
-  data: object,
-): AdapterResult {
-  const payload = {
-    id:             randomUUID(),
-    event:          eventType,
-    source:         config.source,
-    sourceRecordId,
-    timestamp:      new Date().toISOString(),
-    data,
-  };
-  const body = JSON.stringify(payload);
+  if (provider === 'quickbooks') {
+    const body = JSON.stringify(data);
+    return {
+      url: `https://quickbooks.api.intuit.com/v3/company/${config.accountingOrgId}/invoice`,
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.webhookSecret}` },
+      body,
+    };
+  }
+
+  // Default: Count signed webhook
+  const payload = { id: randomUUID(), event: eventType, source: config.source, sourceRecordId, timestamp: new Date().toISOString(), data };
+  const body    = JSON.stringify(payload);
   return {
-    url: config.url,
+    url: config.webhookUrl,
     headers: {
-      'Content-Type':     'application/json',
-      'X-Count-Org-Id':   config.orgId,
-      'X-Count-Signature': sign(config.secret, body),
+      'Content-Type':      'application/json',
+      'X-Count-Org-Id':    config.accountingOrgId ?? '',
+      'X-Count-Signature': sign(config.webhookSecret, body),
     },
     body,
   };
 }
 
-function adaptXero(
-  config: IntegrationConfig,
-  eventType: string,
-  _sourceRecordId: string,
-  data: any,
-): AdapterResult {
-  // Xero uses OAuth2 Bearer tokens and a REST API instead of webhooks.
-  // Map our standard format to Xero's Invoices / BankTransactions API.
-  // See: https://developer.xero.com/documentation/api/accounting/invoices
-  const tenantId  = config.orgId;
-  const baseUrl   = 'https://api.xero.com/api.xro/2.0';
-
-  let xeroPath = '/Invoices';
-  let xeroBody: any = {};
-
-  if (eventType === 'invoice.created') {
-    xeroBody = {
-      Type:        'ACCREC',
-      Contact:     { Name: data.contact?.name ?? 'Unknown' },
-      Date:        data.date,
-      DueDate:     data.dueDate ?? data.date,
-      Status:      'AUTHORISED',
-      LineItems:   (data.lineItems ?? []).map((li: LineItem) => ({
-        Description: li.description,
-        Quantity:    li.quantity,
-        UnitAmount:  li.unitPrice,
-        TaxType:     li.vatType === 'standard' ? 'OUTPUT' : 'NONE',
-      })),
-    };
-  } else if (eventType === 'bill.created') {
-    xeroBody = { ...xeroBody, Type: 'ACCPAY' };
-  }
-
-  return {
-    url:     `${baseUrl}${xeroPath}`,
-    headers: {
-      'Content-Type':   'application/json',
-      'Authorization':  `Bearer ${config.secret}`,
-      'Xero-tenant-id': tenantId,
-    },
-    body: JSON.stringify({ Invoices: [xeroBody] }),
-  };
-}
-
-function adaptQuickBooks(
-  config: IntegrationConfig,
-  eventType: string,
-  _sourceRecordId: string,
-  data: any,
-): AdapterResult {
-  // QuickBooks Online REST API (v3)
-  // See: https://developer.intuit.com/app/developer/qbo/docs/api/accounting/invoices
-  const realmId = config.orgId;
-  const baseUrl = `https://quickbooks.api.intuit.com/v3/company/${realmId}`;
-
-  const qbBody: any = {
-    Line: (data.lineItems ?? []).map((li: LineItem) => ({
-      Amount:          li.unitPrice * li.quantity,
-      DetailType:      'SalesItemLineDetail',
-      SalesItemLineDetail: { Qty: li.quantity, UnitPrice: li.unitPrice },
-      Description:     li.description,
-    })),
-    CustomerRef: { name: data.contact?.name ?? 'Unknown' },
-    TxnDate:     data.date,
-    DueDate:     data.dueDate,
-  };
-
-  return {
-    url:     `${baseUrl}/invoice`,
-    headers: {
-      'Content-Type':  'application/json',
-      'Authorization': `Bearer ${config.secret}`,
-      'Accept':        'application/json',
-    },
-    body: JSON.stringify(qbBody),
-  };
-}
-
-// ── Main class ────────────────────────────────────────────────────────────────
-
 export class AccountingIntegration {
-  private config: Required<IntegrationConfig>;
+  constructor(private config: IntegrationConfig) {}
 
-  constructor(config: IntegrationConfig) {
-    this.config = { provider: 'count', silent: true, ...config };
-  }
-
-  private adapt(eventType: string, sourceRecordId: string, data: object): AdapterResult {
-    switch (this.config.provider) {
-      case 'xero':        return adaptXero(this.config, eventType, sourceRecordId, data);
-      case 'quickbooks':  return adaptQuickBooks(this.config, eventType, sourceRecordId, data);
-      default:            return adaptCount(this.config, eventType, sourceRecordId, data);
-    }
-  }
-
-  private async send(eventType: string, sourceRecordId: string, data: object): Promise<{ ok: boolean; count_record_id?: string; error?: string }> {
-    if (!this.config.url || !this.config.secret || !this.config.orgId) {
-      if (this.config.silent) return { ok: false, error: 'Accounting integration not configured.' };
-      throw new Error('Accounting integration not configured (missing COUNT_WEBHOOK_URL / COUNT_WEBHOOK_SECRET / COUNT_ORG_ID).');
-    }
-
+  private async send(eventType: string, sourceRecordId: string, data: object) {
     try {
-      const { url, headers, body } = this.adapt(eventType, sourceRecordId, data);
+      const { url, headers, body } = buildRequest(this.config, eventType, sourceRecordId, data);
       const res = await fetch(url, { method: 'POST', headers, body });
-      if (!res.ok) {
-        const err = await res.text();
-        throw new Error(`${res.status}: ${err}`);
-      }
+      if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
       const json = await res.json().catch(() => ({}));
-      return { ok: true, count_record_id: json.count_record_id };
+      return { ok: true, count_record_id: json.count_record_id as string | undefined };
     } catch (err: any) {
       console.error(`[accounting/${eventType}]`, err?.message);
-      if (this.config.silent) return { ok: false, error: err?.message };
-      throw err;
+      return { ok: false, error: err?.message as string };
     }
   }
 
-  /** Create a client invoice (e.g. completed order, delivered shipment) */
-  createInvoice(payload: InvoicePayload) {
-    return this.send('invoice.created', payload.sourceRecordId, {
-      type:      'invoice',
-      number:    payload.number,
-      date:      payload.date,
-      dueDate:   payload.dueDate,
-      currency:  payload.currency ?? 'ZAR',
-      contact:   payload.contact,
-      lineItems: payload.lineItems,
-      notes:     payload.notes,
+  createInvoice(p: InvoicePayload) {
+    return this.send('invoice.created', p.sourceRecordId, {
+      type: 'invoice', number: p.number, date: p.date, dueDate: p.dueDate,
+      currency: p.currency ?? 'ZAR', contact: p.contact, lineItems: p.lineItems, notes: p.notes,
     });
   }
 
-  /** Create a supplier bill (e.g. parts purchase, material restock) */
-  createBill(payload: BillPayload) {
-    return this.send('bill.created', payload.sourceRecordId, {
-      type:      'bill',
-      number:    payload.number,
-      date:      payload.date,
-      dueDate:   payload.dueDate,
-      contact:   payload.contact,
-      lineItems: payload.lineItems,
-      notes:     payload.notes,
+  createBill(p: BillPayload) {
+    return this.send('bill.created', p.sourceRecordId, {
+      type: 'bill', number: p.number, date: p.date, dueDate: p.dueDate,
+      contact: p.contact, lineItems: p.lineItems, notes: p.notes,
     });
   }
 
-  /** Record a business expense (e.g. fuel, driver pay, vehicle repair) */
-  createExpense(payload: ExpensePayload) {
-    return this.send('expense.created', payload.sourceRecordId, {
-      type:        'expense',
-      date:        payload.date,
-      description: payload.description,
-      amount:      payload.amount,
-      vatType:     payload.vatType ?? 'standard',
-      category:    payload.category,
-      contact:     payload.contact,
-      notes:       payload.notes,
-      number:      payload.reference,
+  createExpense(p: ExpensePayload) {
+    return this.send('expense.created', p.sourceRecordId, {
+      type: 'expense', date: p.date, description: p.description, amount: p.amount,
+      vatType: p.vatType ?? 'standard', category: p.category, contact: p.contact,
+      notes: p.notes, number: p.reference,
     });
   }
 
-  /** Record a payment received (e.g. subscription charge, BtM post payment) */
-  recordPayment(payload: PaymentPayload) {
-    return this.send('payment.received', payload.sourceRecordId, {
-      type:        'payment',
-      date:        payload.date,
-      amount:      payload.amount,
-      vatType:     payload.vatType ?? 'standard',
-      description: payload.description,
-      contact:     payload.contact,
-      notes:       payload.notes,
-      number:      payload.reference,
-      currency:    payload.currency ?? 'ZAR',
+  recordPayment(p: PaymentPayload) {
+    return this.send('payment.received', p.sourceRecordId, {
+      type: 'payment', date: p.date, amount: p.amount, vatType: p.vatType ?? 'standard',
+      description: p.description, contact: p.contact, notes: p.notes,
+      number: p.reference, currency: p.currency ?? 'ZAR',
     });
   }
 }
 
-/** Singleton factory — call once per app, reads from env */
-export function createAccountingClient(source: 'build' | 'transport' | 'shake') {
+/** Fetches credentials from DB for the given org and returns a ready client.
+ *  Returns null if no integration is configured — callers should skip silently. */
+export async function getAccountingIntegration(
+  orgId:  string,
+  source: 'build' | 'transport',
+): Promise<AccountingIntegration | null> {
+  const supabase = createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+
+  const { data } = await supabase
+    .from('accounting_integrations')
+    .select('webhook_url, webhook_secret, accounting_org_id, provider')
+    .eq('org_id', orgId)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (!data) return null;
+
   return new AccountingIntegration({
-    url:    process.env.COUNT_WEBHOOK_URL    ?? '',
-    secret: process.env.COUNT_WEBHOOK_SECRET ?? '',
-    orgId:  process.env.COUNT_ORG_ID         ?? '',
+    webhookUrl:       data.webhook_url,
+    webhookSecret:    data.webhook_secret,
+    accountingOrgId:  data.accounting_org_id ?? undefined,
     source,
-    provider: (process.env.COUNT_PROVIDER as Provider | undefined) ?? 'count',
-    silent: true,
+    provider:         data.provider as Provider,
   });
 }

@@ -1,15 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Building2, Palette, Bell, CreditCard, Check } from "lucide-react";
+import { Building2, Palette, Bell, CreditCard, Link2 } from "lucide-react";
 import { ModuleLayout } from "@/components/ui/module-layout";
 import { useTheme } from "@/hooks/useTheme";
+import AccountingIntegrationPanel from "@/components/settings/AccountingIntegrationPanel";
 
 const SUB_NAV = [
-  { key: "company",       label: "Company",      icon: <Building2 size={15} strokeWidth={1.8} /> },
-  { key: "appearance",    label: "Appearance",   icon: <Palette   size={15} strokeWidth={1.8} /> },
-  { key: "notifications", label: "Notifications",icon: <Bell      size={15} strokeWidth={1.8} /> },
+  { key: "company",       label: "Company",      icon: <Building2  size={15} strokeWidth={1.8} /> },
+  { key: "appearance",    label: "Appearance",   icon: <Palette    size={15} strokeWidth={1.8} /> },
+  { key: "notifications", label: "Notifications",icon: <Bell       size={15} strokeWidth={1.8} /> },
   { key: "plan",          label: "Plan",         icon: <CreditCard size={15} strokeWidth={1.8} /> },
+  { key: "integrations",  label: "Integrations", icon: <Link2      size={15} strokeWidth={1.8} /> },
 ];
 
 export default function SettingsPage() {
@@ -21,6 +23,7 @@ export default function SettingsPage() {
       {view === "appearance"    && <AppearanceSettings />}
       {view === "notifications" && <NotificationSettings />}
       {view === "plan"          && <PlanSettings />}
+      {view === "integrations"  && <IntegrationsSettings />}
     </ModuleLayout>
   );
 }
@@ -405,3 +408,19 @@ const s: Record<string, React.CSSProperties> = {
   uploadBtn:    { height: 34, padding: "0 16px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", backgroundColor: "var(--bg)", color: "var(--text-primary)", fontSize: 13, fontWeight: 500, cursor: "pointer" },
   saveBtn:      { alignSelf: "flex-start", height: 38, padding: "0 24px", backgroundColor: "var(--accent)", color: "#fff", border: "none", borderRadius: "var(--radius-full, 9999px)", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 },
 };
+
+function IntegrationsSettings() {
+  return (
+    <div style={{ maxWidth: 560, display: "flex", flexDirection: "column", gap: 24 }}>
+      <div>
+        <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4, color: "var(--text-primary)" }}>Accounting</h2>
+        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20, lineHeight: 1.5 }}>
+          Connect your accounting software. When an order is completed, Build will automatically
+          create the client invoice in your account. Your credentials are stored securely
+          on our servers and never sent to the browser.
+        </p>
+        <AccountingIntegrationPanel source="build" />
+      </div>
+    </div>
+  );
+}
